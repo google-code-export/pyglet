@@ -76,6 +76,9 @@ class TextLayout(object):
         glPopMatrix()
         glPopAttrib()
 
+class FontException(Exception):
+    pass
+
 class BaseFont(object):
     texture_width = 256
     texture_height = 256
@@ -136,7 +139,7 @@ class BaseFont(object):
     def render(self, text):
         return TextLayout([StyledText(text, self)])
 
-class GlyphRenderer(object):
+class BaseGlyphRenderer(object):
     def render(self, text):
         pass
 

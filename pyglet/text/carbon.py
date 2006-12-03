@@ -157,12 +157,13 @@ class CarbonFont(BaseFont):
     def get_glyph_renderer(self):
         return CarbonGlyphRenderer(self)
 
-class CarbonGlyphRenderer(object):
+class CarbonGlyphRenderer(BaseGlyphRenderer):
     _bitmap = None
     _bitmap_context = None
     _bitmap_rect = None
 
     def __init__(self, font):
+        super(CarbonGlyphRenderer, self).__init__()
         self._create_bitmap_context(256, 256)
         self.font = font
 

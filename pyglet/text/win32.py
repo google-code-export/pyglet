@@ -156,7 +156,7 @@ class Win32Font(BaseFont):
     def get_glyph_renderer(self):
         return Win32GlyphRenderer(self)
 
-class Win32GlyphRenderer(GlyphRenderer):
+class Win32GlyphRenderer(BaseGlyphRenderer):
     _bitmap = None
     _bitmap_dc = None
     _bitmap_rect = None

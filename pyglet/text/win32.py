@@ -1,9 +1,12 @@
+#!/usr/bin/env python
+
+'''
+'''
+
 from ctypes import *
 
 from pyglet.GL.VERSION_1_1 import *
-from pyglet.image import *
-from pyglet.window import *
-from pyglet.window.event import *
+from pyglet.text import *
 from pyglet.window.win32.constants import *
 from pyglet.window.win32.types import *
 from pyglet.window.win32 import _gdi32 as gdi32, _user32 as user32
@@ -110,175 +113,7 @@ def str_ucs2(text):
         text = text.encode('utf_16_le')   # explicit endian avoids BOM
     return create_string_buffer(text + '\0')
 
-# XXX NewTextureAtlas to become AllocatingTextureAtlas(TextureAtlas)
-#     NewTextureSubImage to become TextureSubImage.
-
-class NewTextureAtlasOutOfSpaceException(ImageException):
-    pass
-
-class NewTextureSubImage(object):
-    def __init__(self, texture, x, y, width, height):
-        self.texture_id = texture.id
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-
-        self.tex_coords = (
-            float(x) / texture.width,
-            float(y) / texture.height,
-            float(x + width) / texture.width,
-            float(y + height) / texture.height)
-
-    def flip_vertical(self):
-        self.tex_coords = (
-            self.tex_coords[0], 
-            self.tex_coords[3], 
-            self.tex_coords[2],
-            self.tex_coords[1])
-
-class NewTextureAtlas(Texture):
-    x = 0
-    y = 0
-    line_height = 0
-    subimage_class = NewTextureSubImage
-
-    def allocate(self, width, height):
-        '''Returns (x, y) position for a new glyph, and reserves that
-        space.'''
-        if self.x + width > self.width:
-            self.x = 0
-            self.y += self.line_height
-            self.line_height = 0
-        if self.y + height > self.height:
-            raise NewTextureAtlasOutOfSpaceException()
-
-        self.line_height = max(self.line_height, height)
-        x = self.x
-        self.x += width
-        return self.subimage_class(self, x, self.y, width, height)
-
-class Glyph(NewTextureSubImage):
-    advance = 0
-    vertices = (0, 0, 0, 0)
-
-    def set_bearings(self, baseline, left_side_bearing, advance):
-        self.advance = advance
-        self.vertices = (
-            left_side_bearing,
-            -baseline,
-            left_side_bearing + self.width,
-            -baseline + self.height)
-
-    def draw(self):
-        '''Debug method: use the higher level APIs for performance and
-        kerning.'''
-        glBindTexture(GL_TEXTURE_2D, self.texture_id)
-        glBegin(GL_QUADS)
-        glTexCoord2f(self.tex_coords[0], self.tex_coords[1])
-        glVertex2f(self.vertices[0], self.vertices[1])
-        glTexCoord2f(self.tex_coords[2], self.tex_coords[1])
-        glVertex2f(self.vertices[2], self.vertices[1])
-        glTexCoord2f(self.tex_coords[2], self.tex_coords[3])
-        glVertex2f(self.vertices[2], self.vertices[3])
-        glTexCoord2f(self.tex_coords[0], self.tex_coords[3])
-        glVertex2f(self.vertices[0], self.vertices[3])
-        glEnd()
-
-    def get_kerning_pair(self, right_glyph):
-        return 0
-
-class GlyphTextureAtlas(NewTextureAtlas):
-    subimage_class = Glyph
-
-class StyledText(object):
-    '''One contiguous sequence of characters sharing the same
-    GL state.'''
-    # TODO Not there yet: must be split on texture atlas changes.
-    def __init__(self, text, font):
-        self.text = text
-        self.font = font
-        self.glyphs = font.get_glyphs(text)
-
-class TextLayout(object):
-    '''Will eventually handle all complex layout, line breaking,
-    justification and state sorting/coalescing.'''
-    def __init__(self, styled_texts):
-        self.styled_texts = styled_texts
-
-    def draw(self):
-        glPushMatrix()
-        for styled_text in self.styled_texts:
-            styled_text.font.apply_blend_state()
-            for glyph in styled_text.glyphs:
-                glyph.draw()
-                glTranslatef(glyph.advance, 0, 0)
-        glPopMatrix()
-
-class Font(object):
-    texture_width = 256
-    texture_height = 256
-
-    # TODO: a __new__ method to instantiate correct Font for platform
-
-    def __init__(self):
-        self.textures = []
-        self.glyphs = {}
-
-    # TODO: static add_font(file) and add_font_directory(dir) methods.
-
-    def create_glyph_texture(self):
-        texture = GlyphTextureAtlas.create(
-            self.texture_width,
-            self.texture_height,
-            GL_LUMINANCE_ALPHA)
-        return texture
-
-    def apply_blend_state(self):
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glEnable(GL_BLEND)
-
-    def allocate_glyph(self, width, height):
-        # Search atlases for a free spot
-        for texture in self.textures:
-            try:
-                return texture.allocate(width, height)
-            except NewTextureAtlasOutOfSpaceException:
-                pass
-
-        # If requested glyph size is bigger than atlas size, increase
-        # next atlas size.  A better heuristic could be applied earlier
-        # (say, if width is > 1/4 texture_width).
-        if width > self.texture_width or height > self.texture_height:
-            self.texture_width, self.texture_height, u, v= \
-                Texture.get_texture_size(width * 2, height * 2)
-
-        texture = self.create_glyph_texture()
-        self.textures.insert(0, texture)
-
-        # This can't fail.
-        return texture.allocate(width, height)
-
-    def get_glyph_renderer(self):
-        raise NotImplementedError('Subclass must override')
-
-    def get_glyphs(self, text):
-        glyph_renderer = None
-        for c in text:
-            if c not in self.glyphs:
-                if not glyph_renderer:
-                    glyph_renderer = self.get_glyph_renderer()
-                self.glyphs[c] = glyph_renderer.render(c)
-        return [self.glyphs[c] for c in text] 
-
-    def render(self, text):
-        return TextLayout([StyledText(text, self)])
-
-class GlyphRenderer(object):
-    def render(self, text):
-        pass
-
-class Win32Font(Font):
+class Win32Font(BaseFont):
     def __init__(self, name, size, bold=False, italic=False):
         super(Win32Font, self).__init__()
 
@@ -304,6 +139,14 @@ class Win32Font(Font):
         self.ascent = metrics.tmAscent
         self.descent = metrics.tmDescent
         self.max_glyph_width = metrics.tmMaxCharWidth
+
+    def create_glyph_texture(self):
+        # This seems to be a Win32 issue only.  Move into pyglet.image?
+        glPushAttrib(GL_ENABLE_BIT)
+        #glEnable(GL_TEXTURE_2D)
+        result = super(Win32Font, self).create_glyph_texture()
+        glPopAttrib()
+        return result
 
     def apply_blend_state(self):
         # There is no alpha component, use luminance.
@@ -358,9 +201,12 @@ class Win32GlyphRenderer(GlyphRenderer):
 
         # Create glyph object and copy bitmap data to texture
         glyph = self.font.allocate_glyph(width, height)
-        glyph.set_bearings(font.descent, lsb, advance)
+        glyph.set_bearings(self.font.descent, lsb, advance)
 
+        # Bizareness: GL_TEXTURE must be enabled for TexImage...?
+        glPushAttrib(GL_ENABLE_BIT)
         glBindTexture(GL_TEXTURE_2D, glyph.texture_id)
+        glEnable(GL_TEXTURE_2D)
         glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
         glPixelStorei(GL_UNPACK_ROW_LENGTH, self._bitmap_rect.right)
         glTexSubImage2D(GL_TEXTURE_2D, 0,
@@ -370,6 +216,7 @@ class Win32GlyphRenderer(GlyphRenderer):
             GL_UNSIGNED_BYTE,
             self._bitmap_data)
         glPopClientAttrib()
+        glPopAttrib()
 
         return glyph
         
@@ -395,8 +242,8 @@ class Win32GlyphRenderer(GlyphRenderer):
             0)
         # Spookiness: the above line causes a "not enough storage" error,
         # even though that error cannot be generated according to docs,
-        # and everything works fine anyway.  Call GetLastError to clear it.
-        kernel32.GetLastError()
+        # and everything works fine anyway.  Call SetLastError to clear it.
+        kernel32.SetLastError(0)
         gdi32.SelectObject(self._bitmap_dc, self._bitmap)
         gdi32.SelectObject(self._bitmap_dc, self.font.hfont)
 
@@ -410,28 +257,3 @@ class Win32GlyphRenderer(GlyphRenderer):
         self._bitmap_rect.top = 0
         self._bitmap_rect.bottom = height
 
-
-
-window = Window(256, 256)
-
-glClearColor(.5, 0, 0, 1)
-glClear(GL_COLOR_BUFFER_BIT)
-glMatrixMode(GL_PROJECTION)
-glOrtho(0, window.width, 0, window.height, -1, 1)
-glMatrixMode(GL_MODELVIEW)
-
-glEnable(GL_TEXTURE_2D)
-glTranslatef(0, 20, 0)
-
-font = Win32Font('Georgia', 72)
-font.render("Hello, world!").draw()
-#font.textures[0].draw()
-
-window.flip()
-
-
-
-exit = ExitHandler()
-window.push_handlers(exit)
-while not exit.exit:
-    window.dispatch_events()

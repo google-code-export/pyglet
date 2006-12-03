@@ -232,20 +232,22 @@ pyglet
             ============================== === === ===
             Component                      X11 WIN OSX
             ============================== === === ===
-            TTF_LOAD                        X 
-            TEXT_RENDERING                  X
+            DEFAULT                             X   X
+            SYSTEM                              X   X
+            FILE
+            ASIAN_FILE
+            ANTIALIAS                           X   X
+            COLOR                               
+            COLOR_BLEND                              
+            KERNING
+            ITALIC_CORRECTION
+            VERTICAL
+            BIDI
             ============================== === === ===
 
         TBD:
-         - render to multiple textures when glyphs don't fit
-         - line breaks
-         - attributed character strings (styling)
          - bidi
          - vertical text
-         - find system fonts (and identify variants)
-         - support surrogate pairs (impossible with truetype?)
-         - pre-rendering of latin-1 (or is ASCII enough?)
-         - multiline rendering (pyglyph)
 
     gui
         :description: 2D graphical user interface.

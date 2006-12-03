@@ -17,7 +17,7 @@ from pyglet.window.event import *
 class TextTestBase(unittest.TestCase):
     font_name = ''
     font_size = 24
-    text = 'Quick brown fox'
+    text = 'Quickly brown fox'
 
     def on_resize(self, width, height):
         glMatrixMode(GL_PROJECTION)
@@ -37,7 +37,7 @@ class TextTestBase(unittest.TestCase):
         self.font = Font(self.font_name, self.font_size) 
 
     def render(self):
-        self.layout = self.font.render('Quick brown fox')
+        self.layout = self.font.render(self.text)
 
     def test_main(self):
         width, height = 200, 200

@@ -53,9 +53,11 @@ class StyledText(object):
     '''One contiguous sequence of characters sharing the same
     GL state.'''
     # TODO Not there yet: must be split on texture atlas changes.
-    def __init__(self, text, font):
+    def __init__(self, text, font, color=(1, 1, 1, 1)):
+        assert len(color) == 4
         self.text = text
         self.font = font
+        self.color = color
         self.glyphs = font.get_glyphs(text)
 
 class TextLayout(object):
@@ -65,11 +67,12 @@ class TextLayout(object):
         self.styled_texts = styled_texts
 
     def draw(self):
-        glPushAttrib(GL_ENABLE_BIT)
+        glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT)
         glEnable(GL_TEXTURE_2D)
         glPushMatrix()
         for styled_text in self.styled_texts:
             styled_text.font.apply_blend_state()
+            glColor4f(*styled_text.color)
             for glyph in styled_text.glyphs:
                 glyph.draw()
                 glTranslatef(glyph.advance, 0, 0)
@@ -136,8 +139,8 @@ class BaseFont(object):
                 self.glyphs[c] = glyph_renderer.render(c)
         return [self.glyphs[c] for c in text] 
 
-    def render(self, text):
-        return TextLayout([StyledText(text, self)])
+    def render(self, text, color=(1, 1, 1, 1)):
+        return TextLayout([StyledText(text, self, color)])
 
 class BaseGlyphRenderer(object):
     def render(self, text):

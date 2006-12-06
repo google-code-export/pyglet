@@ -6,6 +6,13 @@
 __docformat__ = 'restructuredtext'
 __version__ = '$Id$'
 
+from pyglet.GL.VERSION_1_1 import *
+try:
+    from pyglet.GL.ARB_imaging import *
+    _have_imaging = True
+except ImportError:
+    _have_imaging = False
+
 from ctypes import *
 from ctypes import util
 from warnings import warn
@@ -137,7 +144,7 @@ class FreeTypeFont(BaseFont):
 
     def apply_blend_state(self):
         # There is no alpha component, use luminance.
-        glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_BLEND)
 
     def get_glyph_renderer(self):
@@ -168,6 +175,19 @@ class FreeTypeGlyphRenderer(BaseGlyphRenderer):
         glyph.flip_vertical()
 
         # Copy bitmap into texture
+        if _have_imaging:
+            glMatrixMode(GL_COLOR)
+            matrix = (c_float * 16)(
+                1, 0, 0, 1,
+                0, 1, 0, 0,
+                0, 0, 1, 0, 
+                0, 0, 0, 0)
+            glLoadMatrixf(matrix)
+        else:
+            import warnings
+            warnings.warn('No ARB_imaging: font colour/blend will be incorrect')
+            # TODO
+
         glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
         glBindTexture(GL_TEXTURE_2D, glyph.texture_id)
         glPixelStorei(GL_UNPACK_ROW_LENGTH, pitch)
@@ -179,5 +199,9 @@ class FreeTypeGlyphRenderer(BaseGlyphRenderer):
             GL_UNSIGNED_BYTE,
             glyph_slot.bitmap.buffer)
         glPopClientAttrib()
+
+        if _have_imaging:
+            glLoadIdentity()
+            glMatrixMode(GL_MODELVIEW)
 
         return glyph

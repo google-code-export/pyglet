@@ -232,12 +232,12 @@ pyglet
             ============================== === === ===
             Component                      X11 WIN OSX
             ============================== === === ===
-            DEFAULT                             X   X
-            SYSTEM                              X   X
+            DEFAULT                         X   X   X
+            SYSTEM                          X   X   X
             FILE
             ASIAN_FILE
             ANTIALIAS                           X   X
-            COLOR                               
+            COLOR                           X   X   X
             COLOR_BLEND                              
             KERNING
             ITALIC_CORRECTION

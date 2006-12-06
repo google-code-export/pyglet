@@ -238,7 +238,7 @@ pyglet
             ASIAN_FILE
             ANTIALIAS                           X   X
             COLOR                           X   X   X
-            COLOR_BLEND                              
+            COLOR_BLEND                     X   X   X
             KERNING
             ITALIC_CORRECTION
             VERTICAL
@@ -248,6 +248,8 @@ pyglet
         TBD:
          - bidi
          - vertical text
+         - luminance/alpha fallback for when GL_ARB_imaging not supported.
+         - colour/blend untested probably incorrect on win/osx
 
     gui
         :description: 2D graphical user interface.

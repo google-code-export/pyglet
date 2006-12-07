@@ -135,7 +135,7 @@ class FreeTypeGlyphRenderer(GlyphRenderer):
             # TODO
 
         glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
-        glBindTexture(GL_TEXTURE_2D, glyph.texture_id)
+        glBindTexture(GL_TEXTURE_2D, glyph.texture.id)
         glPixelStorei(GL_UNPACK_ROW_LENGTH, pitch)
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
         glTexSubImage2D(GL_TEXTURE_2D, 0,

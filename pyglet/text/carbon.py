@@ -125,45 +125,19 @@ def str_ucs2(text):
         text = text.encode('utf_16_le')   # explicit endian avoids BOM
     return create_string_buffer(text + '\0')
 
-
-class CarbonFont(BaseFont):
-    def __init__(self, name, size, bold=False, italic=False):
-        super(CarbonFont, self).__init__()
-
-        font_id = ATSUFontID()
-        carbon.ATSUFindFontFromName(
-            name,
-            len(name),
-            kFontFullName,
-            kFontNoPlatformCode,
-            kFontNoScriptCode,
-            kFontNoLanguageCode,
-            byref(font_id))
-
-        attributes = {
-            kATSUSizeTag: fixed(size),
-            kATSUFontTag: font_id,
-            kATSURGBAlphaColorTag: ATSURGBAlphaColor(1, 1, 1, 1),
-            kATSUQDBoldfaceTag: c_byte(bold),
-            kATSUQDItalicTag: c_byte(italic)
-        }
-        self.atsu_style = create_atsu_style(attributes)
-
+class CarbonGlyphTextureAtlas(GlyphTextureAtlas):
     def apply_blend_state(self):
         # Textures have premultiplied alpha
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_BLEND)
 
-    def get_glyph_renderer(self):
-        return CarbonGlyphRenderer(self)
-
-class CarbonGlyphRenderer(BaseGlyphRenderer):
+class CarbonGlyphRenderer(GlyphRenderer):
     _bitmap = None
     _bitmap_context = None
     _bitmap_rect = None
 
     def __init__(self, font):
-        super(CarbonGlyphRenderer, self).__init__()
+        super(CarbonGlyphRenderer, self).__init__(font)
         self._create_bitmap_context(256, 256)
         self.font = font
 
@@ -280,4 +254,31 @@ class CarbonGlyphRenderer(BaseGlyphRenderer):
         self._bitmap_rect.size.width = width
         self._bitmap_rect.size.height = height
         
+
+class CarbonFont(BaseFont):
+    glyph_renderer_class = CarbonGlyphRenderer
+    glyph_texture_atlas_class = CarbonGlyphTextureAtlas
+
+    def __init__(self, name, size, bold=False, italic=False):
+        super(CarbonFont, self).__init__()
+
+        font_id = ATSUFontID()
+        carbon.ATSUFindFontFromName(
+            name,
+            len(name),
+            kFontFullName,
+            kFontNoPlatformCode,
+            kFontNoScriptCode,
+            kFontNoLanguageCode,
+            byref(font_id))
+
+        attributes = {
+            kATSUSizeTag: fixed(size),
+            kATSUFontTag: font_id,
+            kATSURGBAlphaColorTag: ATSURGBAlphaColor(1, 1, 1, 1),
+            kATSUQDBoldfaceTag: c_byte(bold),
+            kATSUQDItalicTag: c_byte(italic)
+        }
+        self.atsu_style = create_atsu_style(attributes)
+
 

@@ -90,69 +90,15 @@ def frac(value):
 def unfrac(value):
     return value >> 6
 
-class FreeTypeFont(BaseFont):
-    def __init__(self, name, size, bold=False, italic=False):
-        super(FreeTypeFont, self).__init__()
-        ft_library = ft_get_library()
-
-        if bold:
-            bold = FC_WEIGHT_BOLD
-        else:
-            bold = FC_WEIGHT_REGULAR
-
-        if italic:
-            italic = FC_SLANT_ITALIC
-        else:
-            italic = FC_SLANT_ROMAN
-
-        fontconfig.FcInit()
-
-        pattern = fontconfig.FcPatternCreate()
-        fontconfig.FcPatternAddDouble(pattern, FC_SIZE, c_double(size))
-        fontconfig.FcPatternAddInteger(pattern, FC_WEIGHT, bold)
-        fontconfig.FcPatternAddInteger(pattern, FC_SLANT, italic)
-        fontconfig.FcPatternAddString(pattern, FC_FAMILY, name)
-        fontconfig.FcConfigSubstitute(0, pattern, FcMatchPattern)
-        fontconfig.FcDefaultSubstitute(pattern)
-
-        # Look for a font that matches pattern
-        result = FcResult()
-        match = fontconfig.FcFontMatch(0, pattern, byref(result))
-        fontconfig.FcPatternDestroy(pattern)
-        
-        value = FcValue()
-        result = fontconfig.FcPatternGet(match, FC_FAMILY, 0, byref(value))
-        if result != 0:
-            raise FontException('Could not match font "%s"' % name)
-        if value.u.s != name:
-            warn('Using font "%s" in place of "%s"' % (value.u.s, name))
-
-        f = FT_Face()
-        if fontconfig.FcPatternGetFTFace(match, FC_FT_FACE, 0, byref(f)) != 0:
-            result = fontconfig.FcPatternGet(match, FC_FILE, 0, byref(value))
-            if result != 0:
-                raise FontException('No filename or FT face for "%s"' % name)
-            result = FT_New_Face(ft_library, value.u.s, 0, byref(f))
-            if result:
-                raise FontException('Could not load "%s": %d' % (name, result))
-
-        fontconfig.FcPatternDestroy(match)
-
-        self.face = f.contents
-
-        FT_Set_Char_Size(self.face, 0, frac(size), 0, 0)
-
+class FreeTypeGlyphTextureAtlas(GlyphTextureAtlas):
     def apply_blend_state(self):
         # There is no alpha component, use luminance.
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_BLEND)
 
-    def get_glyph_renderer(self):
-        return FreeTypeGlyphRenderer(self)
-
-class FreeTypeGlyphRenderer(BaseGlyphRenderer):
+class FreeTypeGlyphRenderer(GlyphRenderer):
     def __init__(self, font):
-        super(FreeTypeGlyphRenderer, self).__init__()
+        super(FreeTypeGlyphRenderer, self).__init__(font)
         self.font = font
 
     def render(self, text):
@@ -205,3 +151,59 @@ class FreeTypeGlyphRenderer(BaseGlyphRenderer):
             glMatrixMode(GL_MODELVIEW)
 
         return glyph
+
+class FreeTypeFont(BaseFont):
+    glyph_texture_atlas_class = FreeTypeGlyphTextureAtlas
+    glyph_renderer_class = FreeTypeGlyphRenderer
+
+    def __init__(self, name, size, bold=False, italic=False):
+        super(FreeTypeFont, self).__init__()
+        ft_library = ft_get_library()
+
+        if bold:
+            bold = FC_WEIGHT_BOLD
+        else:
+            bold = FC_WEIGHT_REGULAR
+
+        if italic:
+            italic = FC_SLANT_ITALIC
+        else:
+            italic = FC_SLANT_ROMAN
+
+        fontconfig.FcInit()
+
+        pattern = fontconfig.FcPatternCreate()
+        fontconfig.FcPatternAddDouble(pattern, FC_SIZE, c_double(size))
+        fontconfig.FcPatternAddInteger(pattern, FC_WEIGHT, bold)
+        fontconfig.FcPatternAddInteger(pattern, FC_SLANT, italic)
+        fontconfig.FcPatternAddString(pattern, FC_FAMILY, name)
+        fontconfig.FcConfigSubstitute(0, pattern, FcMatchPattern)
+        fontconfig.FcDefaultSubstitute(pattern)
+
+        # Look for a font that matches pattern
+        result = FcResult()
+        match = fontconfig.FcFontMatch(0, pattern, byref(result))
+        fontconfig.FcPatternDestroy(pattern)
+        
+        value = FcValue()
+        result = fontconfig.FcPatternGet(match, FC_FAMILY, 0, byref(value))
+        if result != 0:
+            raise FontException('Could not match font "%s"' % name)
+        if value.u.s != name:
+            warn('Using font "%s" in place of "%s"' % (value.u.s, name))
+
+        f = FT_Face()
+        if fontconfig.FcPatternGetFTFace(match, FC_FT_FACE, 0, byref(f)) != 0:
+            result = fontconfig.FcPatternGet(match, FC_FILE, 0, byref(value))
+            if result != 0:
+                raise FontException('No filename or FT face for "%s"' % name)
+            result = FT_New_Face(ft_library, value.u.s, 0, byref(f))
+            if result:
+                raise FontException('Could not load "%s": %d' % (name, result))
+
+        fontconfig.FcPatternDestroy(match)
+
+        self.face = f.contents
+
+        FT_Set_Char_Size(self.face, 0, frac(size), 0, 0)
+

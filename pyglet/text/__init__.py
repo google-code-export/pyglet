@@ -31,8 +31,14 @@ class Glyph(TextureSubImage):
     def draw(self):
         '''Debug method: use the higher level APIs for performance and
         kerning.'''
-        glBindTexture(GL_TEXTURE_2D, self.texture_id)
+        glBindTexture(GL_TEXTURE_2D, self.texture.id)
         glBegin(GL_QUADS)
+        self.draw_quad_vertices()
+        glEnd()
+
+    def draw_quad_vertices(self):
+        '''Debug method: use the higher level APIs for performance and
+        kerning.'''
         glTexCoord2f(self.tex_coords[0], self.tex_coords[1])
         glVertex2f(self.vertices[0], self.vertices[1])
         glTexCoord2f(self.tex_coords[2], self.tex_coords[1])
@@ -41,7 +47,6 @@ class Glyph(TextureSubImage):
         glVertex2f(self.vertices[2], self.vertices[3])
         glTexCoord2f(self.tex_coords[0], self.tex_coords[3])
         glVertex2f(self.vertices[0], self.vertices[3])
-        glEnd()
 
     def get_kerning_pair(self, right_glyph):
         return 0
@@ -49,16 +54,20 @@ class Glyph(TextureSubImage):
 class GlyphTextureAtlas(AllocatingTextureAtlas):
     subimage_class = Glyph
 
+    def apply_blend_state(self):
+        # Subclasses should override
+        pass
+
 class StyledText(object):
     '''One contiguous sequence of characters sharing the same
-    GL state.'''
-    # TODO Not there yet: must be split on texture atlas changes.
-    def __init__(self, text, font, color=(1, 1, 1, 1)):
+    GL state.  It is up to the caller to ensure all glyphs share
+    the same owning texture (Font.get_styled_text_list does this).'''
+    def __init__(self, glyphs, texture, color=(1, 1, 1, 1)):
         assert len(color) == 4
-        self.text = text
-        self.font = font
+        assert isinstance(texture, GlyphTextureAtlas)
+        self.glyphs = glyphs
+        self.texture = texture
         self.color = color
-        self.glyphs = font.get_glyphs(text)
 
 class TextLayout(object):
     '''Will eventually handle all complex layout, line breaking,
@@ -71,13 +80,29 @@ class TextLayout(object):
         glEnable(GL_TEXTURE_2D)
         glPushMatrix()
         for styled_text in self.styled_texts:
-            styled_text.font.apply_blend_state()
+            # Complete GL state for this style run
+            glBindTexture(GL_TEXTURE_2D, styled_text.texture.id)
+            styled_text.texture.apply_blend_state()
             glColor4f(*styled_text.color)
+
+            # And draw the (by now kerned, positioned) text.
+            # This looks silly now, but prepping for more efficient
+            # VBO/arrays (proving bound texture state is correct).
             for glyph in styled_text.glyphs:
-                glyph.draw()
+                glBegin(GL_QUADS)
+                glyph.draw_quad_vertices()
+                glEnd()   
                 glTranslatef(glyph.advance, 0, 0)
         glPopMatrix()
         glPopAttrib()
+
+class GlyphRenderer(object):
+    def __init__(self, font):
+        pass
+
+    def render(self, text):
+        raise NotImplementedError('Subclass must override')
+
 
 class FontException(Exception):
     pass
@@ -85,6 +110,11 @@ class FontException(Exception):
 class BaseFont(object):
     texture_width = 256
     texture_height = 256
+    texture_internalformat = GL_LUMINANCE_ALPHA
+
+    # These two need overriding by subclasses
+    glyph_texture_atlas_class = GlyphTextureAtlas
+    glyph_renderer_class = GlyphRenderer
 
     def __init__(self):
         self.textures = []
@@ -94,17 +124,6 @@ class BaseFont(object):
     def add_font_data(cls, data):
         # Ignored unless overridden
         pass
-
-    def create_glyph_texture(self):
-        texture = GlyphTextureAtlas.create(
-            self.texture_width,
-            self.texture_height,
-            GL_LUMINANCE_ALPHA)
-        return texture
-
-    def apply_blend_state(self):
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glEnable(GL_BLEND)
 
     def allocate_glyph(self, width, height):
         # Search atlases for a free spot
@@ -121,30 +140,37 @@ class BaseFont(object):
             self.texture_width, self.texture_height, u, v= \
                 Texture.get_texture_size(width * 2, height * 2)
 
-        texture = self.create_glyph_texture()
+        texture = self.glyph_texture_atlas_class.create(
+            self.texture_width,
+            self.texture_height,
+            self.texture_internalformat)
         self.textures.insert(0, texture)
 
         # This can't fail.
         return texture.allocate(width, height)
-
-    def get_glyph_renderer(self):
-        raise NotImplementedError('Subclass must override')
 
     def get_glyphs(self, text):
         glyph_renderer = None
         for c in text:
             if c not in self.glyphs:
                 if not glyph_renderer:
-                    glyph_renderer = self.get_glyph_renderer()
+                    glyph_renderer = self.glyph_renderer_class(self)
                 self.glyphs[c] = glyph_renderer.render(c)
         return [self.glyphs[c] for c in text] 
 
-    def render(self, text, color=(1, 1, 1, 1)):
-        return TextLayout([StyledText(text, self, color)])
+    def get_styled_text_list(self, text, color):
+        texture = None
+        result = []
+        for glyph in self.get_glyphs(text):
+            if glyph.texture != texture:
+                glyph_list = []
+                result.append(StyledText(glyph_list, glyph.texture, color))
+                texture = glyph.texture
+            glyph_list.append(glyph)
+        return result
 
-class BaseGlyphRenderer(object):
-    def render(self, text):
-        pass
+    def render(self, text, color=(1, 1, 1, 1)):
+        return TextLayout(self.get_styled_text_list(text, color))
 
 # Load platform dependent module
 if sys.platform == 'darwin':

@@ -113,56 +113,20 @@ def str_ucs2(text):
         text = text.encode('utf_16_le')   # explicit endian avoids BOM
     return create_string_buffer(text + '\0')
 
-class Win32Font(BaseFont):
-    def __init__(self, name, size, bold=False, italic=False):
-        super(Win32Font, self).__init__()
-
-        # Create a dummy DC for coordinate mapping
-        dc = user32.GetDC(0)
-        logpixelsy = gdi32.GetDeviceCaps(dc, LOGPIXELSY)
-
-        logfont = LOGFONT()
-        # Conversion of point size to device pixels
-        logfont.lfHeight = -size * logpixelsy / 72
-        if bold:
-            logfont.lfWeight = FW_BOLD
-        else:
-            logfont.lfWeight = FW_NORMAL
-        logfont.lfItalic = italic
-        logfont.lfFaceName = name
-        logfont.lfQuality = ANTIALIASED_QUALITY
-        self.hfont = gdi32.CreateFontIndirectA(byref(logfont))
-
-        metrics = TEXTMETRIC()
-        gdi32.SelectObject(dc, self.hfont)
-        gdi32.GetTextMetricsA(dc, byref(metrics))
-        self.ascent = metrics.tmAscent
-        self.descent = metrics.tmDescent
-        self.max_glyph_width = metrics.tmMaxCharWidth
-
-    def create_glyph_texture(self):
-        # This seems to be a Win32 issue only.  Move into pyglet.image?
-        glPushAttrib(GL_ENABLE_BIT)
-        #glEnable(GL_TEXTURE_2D)
-        result = super(Win32Font, self).create_glyph_texture()
-        glPopAttrib()
-        return result
-
+class Win32GlyphTextureAtlas(GlyphTextureAtlas):
     def apply_blend_state(self):
         # There is no alpha component, use luminance.
+        # TODO: Use ARB_imaging as in FreeType impl.
         glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR)
         glEnable(GL_BLEND)
 
-    def get_glyph_renderer(self):
-        return Win32GlyphRenderer(self)
-
-class Win32GlyphRenderer(BaseGlyphRenderer):
+class Win32GlyphRenderer(GlyphRenderer):
     _bitmap = None
     _bitmap_dc = None
     _bitmap_rect = None
 
     def __init__(self, font):
-        super(Win32GlyphRenderer, self).__init__()
+        super(Win32GlyphRenderer, self).__init__(font)
         self.font = font
         self._create_bitmap_dc(font.max_glyph_width, font.ascent + font.descent) 
         self._black = gdi32.GetStockObject(BLACK_BRUSH)
@@ -204,6 +168,7 @@ class Win32GlyphRenderer(BaseGlyphRenderer):
         glyph.set_bearings(self.font.descent, lsb, advance)
 
         # Bizareness: GL_TEXTURE must be enabled for TexImage...?
+        # --> This seems to be a Win32 issue only.  Move into pyglet.image?
         glPushAttrib(GL_ENABLE_BIT)
         glBindTexture(GL_TEXTURE_2D, glyph.texture_id)
         glEnable(GL_TEXTURE_2D)
@@ -257,3 +222,32 @@ class Win32GlyphRenderer(BaseGlyphRenderer):
         self._bitmap_rect.top = 0
         self._bitmap_rect.bottom = height
 
+class Win32Font(BaseFont):
+    glyph_renderer_class = Win32GlyphRenderer
+    glyph_texture_atlas_class = Win32GlyphTextureAtlas
+
+    def __init__(self, name, size, bold=False, italic=False):
+        super(Win32Font, self).__init__()
+
+        # Create a dummy DC for coordinate mapping
+        dc = user32.GetDC(0)
+        logpixelsy = gdi32.GetDeviceCaps(dc, LOGPIXELSY)
+
+        logfont = LOGFONT()
+        # Conversion of point size to device pixels
+        logfont.lfHeight = -size * logpixelsy / 72
+        if bold:
+            logfont.lfWeight = FW_BOLD
+        else:
+            logfont.lfWeight = FW_NORMAL
+        logfont.lfItalic = italic
+        logfont.lfFaceName = name
+        logfont.lfQuality = ANTIALIASED_QUALITY
+        self.hfont = gdi32.CreateFontIndirectA(byref(logfont))
+
+        metrics = TEXTMETRIC()
+        gdi32.SelectObject(dc, self.hfont)
+        gdi32.GetTextMetricsA(dc, byref(metrics))
+        self.ascent = metrics.tmAscent
+        self.descent = metrics.tmDescent
+        self.max_glyph_width = metrics.tmMaxCharWidth

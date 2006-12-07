@@ -475,7 +475,7 @@ class Texture(Image):
 # TODO derive from image and implement blits
 class TextureSubImage(object):
     def __init__(self, texture, x, y, width, height):
-        self.texture_id = texture.id
+        self.texture = texture
         self.x = x
         self.y = y
         self.width = width

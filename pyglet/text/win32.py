@@ -170,7 +170,7 @@ class Win32GlyphRenderer(GlyphRenderer):
         # Bizareness: GL_TEXTURE must be enabled for TexImage...?
         # --> This seems to be a Win32 issue only.  Move into pyglet.image?
         glPushAttrib(GL_ENABLE_BIT)
-        glBindTexture(GL_TEXTURE_2D, glyph.texture_id)
+        glBindTexture(GL_TEXTURE_2D, glyph.texture.id)
         glEnable(GL_TEXTURE_2D)
         glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
         glPixelStorei(GL_UNPACK_ROW_LENGTH, self._bitmap_rect.right)

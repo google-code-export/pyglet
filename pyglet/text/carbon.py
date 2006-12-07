@@ -214,7 +214,7 @@ class CarbonGlyphRenderer(GlyphRenderer):
        
         # Copy bitmap into the texture.
         glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
-        glBindTexture(GL_TEXTURE_2D, glyph.texture_id)
+        glBindTexture(GL_TEXTURE_2D, glyph.texture.id)
         glPixelStorei(GL_UNPACK_ROW_LENGTH, int(self._bitmap_rect.size.width))
         glPixelStorei(GL_UNPACK_SKIP_ROWS, 
             int(self._bitmap_rect.size.height - image_height))

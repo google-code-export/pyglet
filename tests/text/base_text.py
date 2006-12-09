@@ -14,7 +14,9 @@ from pyglet.text import *
 from pyglet.window import *
 from pyglet.window.event import *
 
-class TextTestBase(unittest.TestCase):
+from tests.regression import ImageRegressionTestCase
+
+class TextTestBase(ImageRegressionTestCase):
     font_name = ''
     font_size = 24
     text = 'Quickly brown fox'
@@ -33,6 +35,9 @@ class TextTestBase(unittest.TestCase):
         self.layout.draw()
         self.window.flip()
 
+        if self.capture_regression_image():
+            self.exit_handler.exit = True
+
     def create_font(self):
         self.font = Font(self.font_name, self.font_size) 
 
@@ -42,15 +47,15 @@ class TextTestBase(unittest.TestCase):
     def test_main(self):
         width, height = 200, 200
         self.window = w = Window(width, height, visible=False)
-        exit_handler = ExitHandler()
-        w.push_handlers(exit_handler)
+        self.exit_handler = ExitHandler()
+        w.push_handlers(self.exit_handler)
         w.push_handlers(self)
 
         self.create_font()
         self.render()
 
         w.set_visible()
-        while not exit_handler.exit:
+        while not self.exit_handler.exit:
             w.dispatch_events()
         w.close()
 

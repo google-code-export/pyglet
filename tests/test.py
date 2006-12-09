@@ -17,7 +17,7 @@ Component:
 
 Capability:
     A capability is a special case of a component which has a separate
-    implementation and/or environment.  For example, the pyglet.window
+    implementation and/or environment.  For example, the window
     components have OS-specific capabilities: WIN, X11 and OSX.   An
     implementation of, for example, FULLSCREEN_TOGGLE, will depend
     very much on this capability, so it makes sense to track the
@@ -32,7 +32,7 @@ Section:
     and an implementation table, which lists components and the
     current progress with respect to the capabilities.  Sections
     can also contain subsections, which are separated by periods, for
-    example: pyglet.window is a section.
+    example: image.codecs.gdk is a (hypothetical) section.
 
 The requirements document (doc/requirements.txt) is written in
 reStructured text and contains all the sections, components and
@@ -44,6 +44,14 @@ A finished component is marked against the appropriate capabilities
 with an "X"; partial or incomplete implementations with either a "/"
 or empty table cell.  This test script will not attempt to run
 unit tests for unfinished implementations.
+
+Some tests generate regression images, so you will only need to run
+through the interactive procedure once.  During subsequent runs the
+image shown on screen will be compared with the regression images
+and passed automatically if they match.  There are command line 
+options for disabling this feature.
+
+By default regression images are saved in tests/regression/images/
 
 Running tests
 -------------
@@ -84,22 +92,56 @@ Command-line options:
     Specify the minimum log level to write (defaults to 10: info)
 --log-file=
     Specify log file to write to (defaults to stderr [TODO])
+--no-regression-capture
+    Don't save regression images to disk.
+--no-regression-check
+    Don't look for a regression image on disk; assume none exists (good
+    for rebuilding out of date regression images).
+--regression-tolerance=
+    Specify the tolerance when comparing a regression image.  A value of
+    2, for example, means each sample component must be +/- 2 units
+    of the regression image.  Tolerance of 0 means images must be identical,
+    tolerance of 256 means images will always match (if correct dimensions).
+    Defaults to 2.
+--regression-path=
+    Specify the directory to store and look for regression images.
+    Defaults to tests/regression/images/
 --no-interactive=
     Don't write descriptions or prompt for confirmation; just run each
     test in succcession.
 
-After the command line options, you can specify the names of any
-sections or capabilities you wish to test.  If none are specified, all
-tests are run.  For example::
+After the command line options, you can specify the all or part or a regular
+expression of any components or sections you wish to test.  If none are
+specified, all tests are run.
 
-    python test/test.py --capabilities=NVIDIA,WIN pyglet.window
+Examples
+--------
 
-Runs all tests in the pyglet.window section with the given capabilities.
+    python tests/test.py --capabilities=GENERIC,NVIDIA,WIN window
 
-    python test/test.py --no-interactive pyglet.window.FULLSCREEN_TOGGLE
+Runs all tests in the window section with the given capabilities.
 
-Test just the FULLSCREEN_TOGGLE component in the pyglet.window section,
+    python tests/test.py --no-interactive window.FULLSCREEN_TOGGLE
+
+Test just the FULLSCREEN_TOGGLE component in the window section,
 without prompting for input (useful for development).
+
+Currently the image and text tests use regression images::
+
+    python tests/test.py --no-regression-check image
+
+Rebuild all of the regression images for the image section tests.
+
+    python tests/test.py --no-regression-capture image
+
+Run the image section tests, but don't overwrite the regression images (they
+will still be checked, if possible though).
+
+    python tests/image/PIL_RGBA_SAVE.py
+
+Run a single test outside of the test harness.  Handy for development; it
+is equivalent to specifying --no-interactive --no-regression-check
+--no-regression-capture options.
 
 Writing tests
 -------------
@@ -107,10 +149,10 @@ Writing tests
 Add the capability to the appropriate implementation table in the requirements
 document (see requirements.txt for formatting).   Create one unit test
 script per capability, located in the directory corresponding to the
-section.  For example, the test for pyglet.window.FULLSCREEN_TOGGLE is
+section.  For example, the test for window.FULLSCREEN_TOGGLE is
 located at::
 
-    test/pyglet/window/FULLSCREEN_TOGGLE.py
+    tests/window/FULLSCREEN_TOGGLE.py
 
 The test file must contain:
 
@@ -125,6 +167,18 @@ The test file must contain:
 Mark off capabilities as implemented earlier rather than later, so that
 the tests get run by default (even if they are failing).
 
+Writing regression tests
+------------------------
+
+Your test case should subclass tests.regression.ImageRegressionTestCase
+instead of unitttest.TestCase.  At the point where the buffer (window
+image) should be checked/saved, call self.capture_regression_image().
+If this method returns True, you can exit straight away (regression
+test passed), otherwise continue running interactively (regression image
+was captured, wait for user confirmation).  You can call
+capture_regression_image() several times; only the final image will be
+used.
+
 Open questions
 --------------
 
@@ -137,19 +191,23 @@ Open questions
 __docformat__ = 'restructuredtext'
 __version__ = '$Id: $'
 
+import array
 import docutils.nodes
 import docutils.parsers.rst
 import getopt
 import imp
 import logging
 import os
+import re
 import sys
 import time
 import unittest
 
-# XXX dodginess: fiddle sys.path to move pyglet dir to front rather than
-# tests dir.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), os.path.pardir))
+import tests.regression
+import pyglet.image
+
+regressions_path = os.path.join(os.path.dirname(__file__), 
+                                'regression', 'images')
 
 class RequirementsComponent(object):
     FULL = 50
@@ -193,6 +251,9 @@ class RequirementsComponent(object):
             module = getattr(module, c)
         return module
 
+    def get_regression_image_filename(self):
+        return os.path.join(regressions_path, '%s.png' % self.get_absname())
+
     def __repr__(self):
         return 'RequirementsComponent(%s)' % self.get_absname()
 
@@ -206,6 +267,8 @@ class RequirementsSection(object):
         self.description = ''
         self.sections = {}
         self.components = {}
+        self.all_components = []
+        self.all_sections = []
 
     def add_section(self, section):
         self.sections[section.name] = section
@@ -230,10 +293,31 @@ class RequirementsSection(object):
             return section.components.get(component, None)
 
     def get_all_components(self):
-        components = self.components.values()
-        for section in self.sections.values():
-            components += section.get_all_components()
-        return components
+        if not self.all_components:
+            self.all_components = self.components.values()
+            for section in self.sections.values():
+                self.all_components += section.get_all_components()
+        return self.all_components
+
+    def get_all_sections(self): 
+        if not self.all_sections:
+            self.all_sections = self.sections.values()
+            for section in self.sections.values():
+                self.all_sections += section.get_all_sections()
+        return self.all_sections
+
+    def search(self, query):
+        pattern = re.compile(query)
+        results = []
+        for component in self.get_all_components():
+            if pattern.search(component.get_absname()):
+                results.append(component)
+
+        for section in self.get_all_sections():
+            if pattern.search(section.get_absname()):
+                results += section.get_all_components()
+
+        return results
     
     def get_absname(self):
         names = []
@@ -262,6 +346,7 @@ class Requirements(RequirementsSection):
         parser.parse(rst, document)
         document.walkabout(RequirementsParser(document, requirements))
         return requirements
+
 
 class RequirementsParser(docutils.nodes.GenericNodeVisitor):
     def __init__(self, document, requirements):
@@ -330,6 +415,93 @@ class ImplementationParser(docutils.nodes.GenericNodeVisitor):
                                RequirementsComponent.UNKNOWN)
                 component.set_progress(capability, progress)
 
+class StandardTestResult(unittest.TestResult):
+    def __init__(self, component):
+        super(StandardTestResult, self).__init__()
+
+    def setUserPass(self):
+        pass
+
+class RegressionCaptureTestResult(unittest.TestResult):
+    def __init__(self, component):
+        super(RegressionCaptureTestResult, self).__init__()
+        self.component = component
+        self.captured_image = None
+
+    def startTest(self, test):
+        super(RegressionCaptureTestResult, self).startTest(test)
+        if isinstance(test, tests.regression.ImageRegressionTestCase):
+            test._enable_regression_image = True
+
+    def addSuccess(self, test):
+        super(RegressionCaptureTestResult, self).addSuccess(test)
+        assert self.captured_image is None
+        if isinstance(test, tests.regression.ImageRegressionTestCase):
+            self.captured_image = test._captured_image
+
+    def setUserPass(self):
+        if self.captured_image:
+            filename = self.component.get_regression_image_filename()
+            self.captured_image.save(filename)
+            logging.getLogger().info('Wrote regression image %s' % filename)
+
+class Regression(Exception):
+    pass
+
+def buffer_equal(a, b, tolerance=0):
+    if tolerance == 0:
+        return a == b
+
+    if len(a) != len(b):
+        return False
+
+    a = array.array('B', a)
+    b = array.array('B', b)
+    for i in range(len(a)):
+        if abs(a[i] - b[i]) > tolerance:
+            return False
+    return True
+
+class RegressionCheckTestResult(unittest.TestResult):
+    def __init__(self, component, tolerance):
+        super(RegressionCheckTestResult, self).__init__()
+        self.filename = component.get_regression_image_filename()
+        self.regression_image = pyglet.image.Image.load(self.filename)
+        self.tolerance = tolerance
+
+    def startTest(self, test):
+        super(RegressionCheckTestResult, self).startTest(test)
+        if isinstance(test, tests.regression.ImageRegressionTestCase):
+            test._enable_regression_image = True
+            test._enable_interactive = False
+            logging.getLogger().info('Using regression %s' % self.filename)
+
+    def addSuccess(self, test):
+        # Check image
+        ref_image = self.regression_image.get_raw_image()
+        this_image = test._captured_image.get_raw_image()
+        this_image.set_format(ref_image.format)
+        if this_image.top_to_bottom != ref_image.top_to_bottom:
+            this_image.swap_rows()
+
+        if this_image.width != ref_image.width:
+            self.addFailure(test, 
+                'Buffer width does not match regression image')
+        elif this_image.height != ref_image.height:
+            self.addFailure(test, 
+                'Buffer height does not match regression image')
+        elif not buffer_equal(this_image.tostring(), ref_image.tostring(),
+                              self.tolerance):
+            self.addFailure(test,
+                'Buffer does not match regression image')
+        else:
+            super(RegressionCheckTestResult, self).addSuccess(test)
+
+    def addFailure(self, test, err):
+        err = Regression(err)
+        super(RegressionCheckTestResult, self).addFailure(test, (Regression,
+            err, []))
+
 def main(args):
     script_root = os.path.dirname(args[0]) or os.path.curdir
     requirements_filename = os.path.sep.join(
@@ -337,6 +509,9 @@ def main(args):
     test_root = script_root
     log_level = 10
     log_file = None
+    enable_regression_capture = True
+    enable_regression_check = True
+    regression_tolerance = 2
     interactive = True
 
     capabilities = ['GENERIC']
@@ -354,6 +529,10 @@ def main(args):
          'capabilities=',
          'log-level=',
          'log-file=',
+         'regression-path=',
+         'regression-tolerance=',
+         'no-regression-capture',
+         'no-regression-check',
          'no-interactive'])
 
     for key, value in opts:
@@ -367,8 +546,24 @@ def main(args):
             log_level = int(value)
         elif key == '--log-file':
             log_file = value
+        elif key == '--regression-path':
+            global regressions_path
+            regressions_path = value
+        elif key == '--regression-tolerance':
+            regression_tolerance = int(value)
+        elif key == '--no-regression-capture':
+            enable_regression_capture = False
+        elif key == '--no-regression-check':
+            enable_regression_check = False
         elif key == '--no-interactive':
             interactive = False
+            enable_regression_capture = False
+
+    if enable_regression_capture:
+        try:
+            os.makedirs(regressions_path)
+        except OSError:
+            pass
 
     logging.basicConfig(filename=log_file, level=log_level)
 
@@ -387,21 +582,12 @@ def main(args):
         sections = []
         components = []
         for arg in arguments:
-            section = requirements.get_section(arg)
-            if section:
-                sections.append(requirements.get_section(arg))
-            else:
-                component = requirements.get_component(arg)
-                if component:
-                    components.append(requirements.get_component(arg))
-                else:
-                    log.error('No section or component named %s' % arg)
+            matches = requirements.search(arg)
+            if not matches:
+                log.error('No components or sections match "%s"', arg)
+            components += matches
     else:
-        sections = [requirements]
-        components = []
-
-    for section in sections:
-        components += section.get_all_components()
+        components = requirements.get_all_components()
 
     # Now test each component
     for component in components:
@@ -422,13 +608,22 @@ def main(args):
         module_interactive = interactive and \
          not (hasattr(module, '__noninteractive') and module.__noninteractive)
 
+        if enable_regression_check and \
+           os.path.exists(component.get_regression_image_filename()):
+            result = RegressionCheckTestResult(component, regression_tolerance)
+            module_interactive = False
+        elif enable_regression_capture:
+            result = RegressionCaptureTestResult(component)
+        else:
+            result = StandardTestResult(component)
+
         if module_interactive:
             print '-' * 78
             if module.__doc__:
                 print module.__doc__
             raw_input('Press a key to begin test...')
         suite = unittest.TestLoader().loadTestsFromModule(module)
-        result = unittest.TestResult()
+
         log.info('Begin unit tests for %s', component)
         suite(result)
         for failure in result.failures:
@@ -442,14 +637,16 @@ def main(args):
         if (module_interactive and 
             len(result.failures) == 0 and 
             len(result.errors) == 0):
-            result = raw_input('[P]assed test, [F]ailed test: ')
-            if result and result[0] in ('F', 'f'):
+            user_result = raw_input('[P]assed test, [F]ailed test: ')
+            if user_result and user_result[0] in ('F', 'f'):
                 print 'Enter failure description: '
                 description = raw_input('> ')
                 log.error('User marked fail for %s', component)
                 log.error(description)
             else:
                 log.info('User marked pass for %s', component)
+                result.setUserPass()
+        
 
 if __name__ == '__main__':
     main(sys.argv)

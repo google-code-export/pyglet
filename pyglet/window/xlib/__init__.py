@@ -53,6 +53,7 @@ else:
     _have_xinerama = False
 
 xlib.XOpenDisplay.argtypes = [c_char_p]
+ptrDisplay = POINTER(Display)
 xlib.XOpenDisplay.restype = POINTER(Display)
 xlib.XScreenOfDisplay.restype = POINTER(Screen)
 xlib.XInternAtom.restype = Atom
@@ -106,7 +107,7 @@ class XlibPlatform(BasePlatform):
         if _have_xinerama and xinerama.XineramaIsActive(display):
             number = c_int()
             infos = xinerama.XineramaQueryScreens(display, byref(number))
-            infos = cast(infos, 
+            infos = cast(infos,
                          POINTER(XineramaScreenInfo * number.value)).contents
             result = []
             for info in infos:
@@ -126,7 +127,7 @@ class XlibPlatform(BasePlatform):
             for i in range(screen_count):
                 screen = xlib.XScreenOfDisplay(display, i)
                 result.append(XlibScreen(display,
-                                         i, 
+                                         i,
                                          0, 0,
                                          screen.contents.width,
                                          screen.contents.height,
@@ -157,7 +158,7 @@ class XlibPlatform(BasePlatform):
         else:
             attrib_list = None
         elements = c_int()
-        configs = glXChooseFBConfig(display, 
+        configs = glXChooseFBConfig(display,
             screen._x_screen_id, attrib_list, byref(elements))
         if configs:
             result = []
@@ -174,7 +175,11 @@ class XlibPlatform(BasePlatform):
         if context_share:
             context_share = context_share._context
 
-        context = glXCreateNewContext(config._display, config._fbconfig, 
+        # ensure we can call GLX 1.3 API
+        if not config._display.have_glx_version(1, 3):
+            raise XlibException('GLX version 1.3+ required')
+
+        context = glXCreateNewContext(config._display, config._fbconfig,
             GLX_RGBA_TYPE, context_share, True)
 
         if context == GLXBadContext:
@@ -182,7 +187,7 @@ class XlibPlatform(BasePlatform):
         elif context == GLXBadFBConfig:
             raise XlibException('Invalid GL configuration')
         elif context < 0:
-            raise XlibException('Could not create GL context') 
+            raise XlibException('Could not create GL context')
 
         return XlibGLContext(config._display, context)
 
@@ -195,11 +200,33 @@ class XlibPlatform(BasePlatform):
         if not display:
             display = ''
         if type(display) in (str, unicode):
-            display = xlib.XOpenDisplay(display)
+            display = XlibDisplay(xlib.XOpenDisplay(display))
             if not display:
-                raise XlibException('Cannot connect to X server') 
+                raise XlibException('Cannot connect to X server')
             factory.set_x_display(display)
         return display
+
+class XlibDisplay(ptrDisplay):
+    def have_glx_version(self, major, minor=0):
+        def test(version):
+            version = [int(v) for v in ver.split('.')]
+            return version >= [major, minor]
+        if not test(self.get_glx_server_version()): return False
+        if not test(self.get_glx_client_version()): return False
+    def get_glx_server_vendor(self):
+        return glXQueryServerString(self, 0, GLX_VENDOR)
+    def get_glx_server_version(self):
+        return glXQueryServerString(self, 0, GLX_VERSION)
+    def get_glx_server_extensions(self):
+        return glXQueryServerString(self, 0, GLX_EXTENSIONS).split()
+    def get_glx_client_vendor(self):
+        return glXGetClientString(self, GLX_VENDOR)
+    def get_glx_client_version(self):
+        return glXGetClientString(self, GLX_VERSION)
+    def get_glx_client_extensions(self):
+        return glXGetClientString(self, GLX_EXTENSIONS).split()
+    def get_glx_extensions(self):
+        return glXQueryExtensionsString(self, 0).split()
 
 class XlibScreen(BaseScreen):
     def __init__(self, display, x_screen_id, x, y, width, height, xinerama):
@@ -223,7 +250,7 @@ class XlibGLConfig(BaseGLConfig):
         self._attributes = {}
         for name, attr in _attribute_ids.items():
             value = c_int()
-            result = glXGetFBConfigAttrib(self._display, 
+            result = glXGetFBConfigAttrib(self._display,
                 self._fbconfig, attr, byref(value))
             if result >= 0:
                 self._attributes[name] = value.value
@@ -268,20 +295,6 @@ class XlibGLContext(BaseGLContext):
 
     def is_direct(self):
         return glXIsDirect(self._display, self._context)
-    def get_server_vendor(self):
-        return glXQueryServerString(self._display, 0, GLX_VENDOR)
-    def get_server_version(self):
-        return glXQueryServerString(self._display, 0, GLX_VERSION)
-    def get_server_extensions(self):
-        return glXQueryServerString(self._display, 0, GLX_EXTENSIONS).split()
-    def get_client_vendor(self):
-        return glXGetClientString(self._display, GLX_VENDOR)
-    def get_client_version(self):
-        return glXGetClientString(self._display, GLX_VERSION)
-    def get_client_extensions(self):
-        return glXGetClientString(self._display, GLX_EXTENSIONS).split()
-    def get_extensions(self):
-        return glXQueryExtensionsString(self._display, 0).split()
 
 _xlib_event_handler_names = []
 
@@ -417,13 +430,13 @@ class XlibWindow(BaseWindow):
         attributes_mask |= CWOverrideRedirect
 
         if fullscreen:
-            xlib.XMoveResizeWindow(self._display, self._window, 
+            xlib.XMoveResizeWindow(self._display, self._window,
                 screen.x, screen.y, screen.width, screen.height)
         else:
-            xlib.XResizeWindow(self._display, self._window, 
+            xlib.XResizeWindow(self._display, self._window,
                 self._width, self._height)
 
-        xlib.XChangeWindowAttributes(self._display, self._window, 
+        xlib.XChangeWindowAttributes(self._display, self._window,
             attributes_mask, byref(attributes))
 
     def _map(self):

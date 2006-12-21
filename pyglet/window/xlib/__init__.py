@@ -21,6 +21,7 @@ Resize and move are handled by a bunch of different events:
 __docformat__ = 'restructuredtext'
 __version__ = '$Id$'
 
+import sets
 from ctypes import *
 from ctypes import util
 import unicodedata
@@ -97,6 +98,11 @@ _attribute_ids = {
     'x_renderable': GLX_X_RENDERABLE,
 }
 
+only_in_13 = sets.Set(['sample_buffers', 'samples', 'render_type',
+    'config_caveat', 'transparent_type', 'transparent_index_value',
+    'transparent_red_value', 'transparent_green_value',
+    'transparent_blue_value', 'transparent_alpha_value', 'x_renderable'])
+
 class XlibException(WindowException):
     pass
 
@@ -143,22 +149,29 @@ class XlibPlatform(BasePlatform):
 
         factory.set_gl_attribute('x_renderable', True)
 
+        have_13 = have_glx_version(display, 1, 3)
+
         # Construct array of attributes
         attrs = []
         for name, value in factory.get_gl_attributes().items():
+            if not have_13 and name in only_in_13:
+                continue
+
             attr = _attribute_ids.get(name, None)
             if not attr:
                 warnings.warn('Unknown GLX attribute "%s"' % name)
-            attrs.append(attr)
-            attrs.append(int(value))
+            attrs.extend([attr, int(value)])
+
+        if not have_13:
+            attrs.extend([GLX_RGBA, True])
+
         if len(attrs):
-            attrs.append(0)
-            attrs.append(0)
+            attrs.extend([0, 0])
             attrib_list = (c_int * len(attrs))(*attrs)
         else:
             attrib_list = None
 
-        if have_glx_version(display, 1, 3):
+        if have_13:
             elements = c_int()
             configs = glXChooseFBConfig(display, screen._x_screen_id,
                 attrib_list, byref(elements))
@@ -178,11 +191,7 @@ class XlibPlatform(BasePlatform):
         if context_share:
             context_share = context_share._context
 
-        if have_glx_version(config._display, 1, 3):
-            context = glXCreateNewContext(config._display, config._fbconfig,
-                GLX_RGBA_TYPE, context_share, True)
-        else:
-            raise NotImplementedError('Need GLX 1.0 implementation')
+        context = config.create_context(context_share)
 
         if context == GLXBadContext:
             raise XlibException('Invalid context share')
@@ -212,7 +221,6 @@ def have_glx_version(display, major, minor=0):
     # glXQueryServerString was introduced in GLX 1.1, so we need to use the
     # 1.0 function here which queries the server implementation for its
     # version.
-    #return False        # XXX for debugging 1.0 codepath
     smajor = c_int()
     sminor = c_int()
     if not glXQueryVersion(display, byref(smajor), byref(sminor)):
@@ -246,14 +254,28 @@ class XlibGLConfig10(BaseGLConfig):
         self._display = display
         self._screen = screen
         self._attrib_list = attrib_list
-        raise NotImplementedError('Need GLX 1.0 implementation')
+        self._visual_info = glXChooseVisual(self._display,
+            screen._x_screen_id, self._attrib_list)
+        if not self._visual_info:
+            raise XlibException('No conforming visual exists')
+
+        self._attributes = {}
+        for name, attr in _attribute_ids.items():
+            value = c_int()
+            result = glXGetConfig(self._display,
+                self._visual_info, attr, byref(value))
+            if result >= 0:
+                self._attributes[name] = value.value
 
     def get_visual_info(self):
-        return glXChooseVisual(self._display, DefaultScreen(dpy),
-            self._attib_list)
+        return self._visual_info.contents
 
     def get_gl_attributes(self):
-        raise NotImplementedError('Need GLX 1.0 implementation')
+        return self._attributes
+
+    def create_context(self, context_share):
+        return glXCreateContext(self._display, self._visual_info,
+            context_share, True)
 
 class XlibGLConfig13(BaseGLConfig):
     def __init__(self, display, screen, fbconfig):
@@ -274,6 +296,10 @@ class XlibGLConfig13(BaseGLConfig):
 
     def get_gl_attributes(self):
         return self._attributes
+
+    def create_context(self, context_share):
+        return glXCreateNewContext(self._display, self._fbconfig,
+            GLX_RGBA_TYPE, context_share, True)
 
 class XlibGLContext(BaseGLContext):
     def __init__(self, display, context):
@@ -511,12 +537,15 @@ class XlibWindow(BaseWindow):
         self._glx_window = None
 
     def switch_to(self):
-        if not self._glx_window:
-            self._glx_window = glXCreateWindow(self._display,
-                self._config._fbconfig, self._window, None)
+        if have_glx_version(self._display, 1, 3):
+            if not self._glx_window:
+                self._glx_window = glXCreateWindow(self._display,
+                    self._config._fbconfig, self._window, None)
+            glXMakeContextCurrent(self._display,
+                self._glx_window, self._glx_window, self._glx_context)
+        else:
+            glXMakeCurrent(self._display, self._window, self._glx_context)
 
-        glXMakeContextCurrent(self._display,
-            self._glx_window, self._glx_window, self._glx_context)
         pyglet.GL.info.set_context()
         pyglet.GLU.info.set_context()
 
@@ -528,11 +557,13 @@ class XlibWindow(BaseWindow):
             self.dispatch_event(EVENT_CONTEXT_STATE_LOST)
 
     def flip(self):
-        if not self._glx_window:
-            self._glx_window = glXCreateWindow(self._display,
-                self._config._fbconfig, self._window, None)
-
-        glXSwapBuffers(self._display, self._glx_window)
+        if have_glx_version(self._display, 1, 3):
+            if not self._glx_window:
+                self._glx_window = glXCreateWindow(self._display,
+                    self._config._fbconfig, self._window, None)
+            glXSwapBuffers(self._display, self._glx_window)
+        else:
+            glXSwapBuffers(self._display, self._window)
 
     def set_caption(self, caption):
         self._caption = caption

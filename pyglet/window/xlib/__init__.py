@@ -62,7 +62,7 @@ xlib.XCheckTypedWindowEvent.argtypes = [POINTER(Display),
     c_ulong, c_int, POINTER(XEvent)]
 xlib.XPutBackEvent.argtypes = [POINTER(Display), POINTER(XEvent)]
 xlib.XCreateWindow.argtypes = [POINTER(Display), WindowRef,
-    c_int, c_int, c_uint, c_uint, c_uint, c_int, c_uint, 
+    c_int, c_int, c_uint, c_uint, c_uint, c_int, c_uint,
     POINTER(Visual), c_ulong, POINTER(XSetWindowAttributes)]
 
 # Do we have the November 2000 UTF8 extension?
@@ -176,7 +176,7 @@ class XlibPlatform(BasePlatform):
             context_share = context_share._context
 
         # ensure we can call GLX 1.3 API
-        if not config._display.have_glx_version(1, 3):
+        if not config._display.have_glx_version(config._display, 1, 3):
             raise XlibException('GLX version 1.3+ required')
 
         context = glXCreateNewContext(config._display, config._fbconfig,
@@ -200,34 +200,19 @@ class XlibPlatform(BasePlatform):
         if not display:
             display = ''
         if type(display) in (str, unicode):
-            display = XlibDisplay(xlib.XOpenDisplay(display))
+            display = xlib.XOpenDisplay(display)
             if not display:
                 raise XlibException('Cannot connect to X server')
             factory.set_x_display(display)
         return display
 
-# XXX this should be a POINTER(Display) but we can't subclass that
-class XlibDisplay(c_void_p):
-    def have_glx_version(self, major, minor=0):
-        def test(version):
-            version = [int(v) for v in ver.split('.')]
-            return version >= [major, minor]
-        if not test(self.get_glx_server_version()): return False
-        if not test(self.get_glx_client_version()): return False
-    def get_glx_server_vendor(self):
-        return glXQueryServerString(self, 0, GLX_VENDOR)
-    def get_glx_server_version(self):
-        return glXQueryServerString(self, 0, GLX_VERSION)
-    def get_glx_server_extensions(self):
-        return glXQueryServerString(self, 0, GLX_EXTENSIONS).split()
-    def get_glx_client_vendor(self):
-        return glXGetClientString(self, GLX_VENDOR)
-    def get_glx_client_version(self):
-        return glXGetClientString(self, GLX_VERSION)
-    def get_glx_client_extensions(self):
-        return glXGetClientString(self, GLX_EXTENSIONS).split()
-    def get_glx_extensions(self):
-        return glXQueryExtensionsString(self, 0).split()
+def have_glx_version(display, major, minor=0):
+    def test(version):
+        version = [int(v) for v in ver.split('.')]
+        return version >= [major, minor]
+    if not test(glXQueryServerString(display, 0, GLX_VERSION)):
+        return False
+    return test(glXGetClientString(display, GLX_VERSION))
 
 class XlibScreen(BaseScreen):
     def __init__(self, display, x_screen_id, x, y, width, height, xinerama):

@@ -41,18 +41,19 @@ context = w.get_context()
 print 'Context is', context
 
 if context.__class__.__name__ == 'XlibGLContext':
+    d = w._display
     print 'GLX %s direct'%(context.is_direct() and 'is' or 'is not')
-    print 'GLX server vendor:', w._display.get_server_vendor()
-    print 'GLX server version:', w._display.get_server_version()
+    print 'GLX server vendor:', glXQueryServerString(w._display, 0, GLX_VENDOR)
+    print 'GLX server version:', glXQueryServerString(w._display, 0,
+        GLX_VERSION)
     print 'GLX server extensions:'
-    exts = ' '.join(w._display.get_server_extensions())
+    exts = glXQueryServerString(w._display, 0, GLX_EXTENSIONS)
     print ' ', '\n  '.join(textwrap.wrap(exts))
-    print 'GLX client vendor:', w._display.get_client_vendor()
-    print 'GLX client version:', w._display.get_client_version()
+    print 'GLX client vendor:', glXGetClientString(w._display, GLX_VENDOR)
+    print 'GLX client version:', glXGetClientString(w._display, GLX_VERSION)
     print 'GLX client extensions:'
-    exts = ' '.join(w._display.get_client_extensions())
-    print ' ', '\n  '.join(textwrap.wrap(exts))
+    print ' ', '\n  '.join(textwrap.wrap(glXGetClientString(w._display,
+        GLX_EXTENSIONS)))
     print 'GLX extensions:'
-    exts = ' '.join(w._display.get_extensions())
-    print ' ', '\n  '.join(textwrap.wrap(exts))
-
+    print ' ', '\n '.join(textwrap.wrap(glXQueryExtensionsString(w._display,
+        0)))

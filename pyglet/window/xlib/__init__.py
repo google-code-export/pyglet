@@ -388,7 +388,7 @@ class XlibWindow(BaseWindow):
                 window_attributes.colormap = xlib.XDefaultColormap(
                     self._display, self._screen_id)
             self._window = xlib.XCreateWindow(self._display, root,
-                0, 0, self._width, self._height, 0, visual_info.depth, 
+                0, 0, self._width, self._height, 0, visual_info.depth,
                 InputOutput, visual, CWColormap, byref(window_attributes))
 
             # Setting null background pixmap disables drawing the background,
@@ -582,7 +582,7 @@ class XlibWindow(BaseWindow):
             # Hide pointer by creating an empty cursor
             black = xlib.XBlackPixel(self._display, self._screen_id)
             black = c_int(black)
-            bmp = xlib.XCreateBitmapFromData(self._display, self._window, 
+            bmp = xlib.XCreateBitmapFromData(self._display, self._window,
                 (c_byte * 8)(), 8, 8)
             cursor = xlib.XCreatePixmapCursor(self._display, bmp, bmp,
                 byref(black), byref(black), 0, 0)
@@ -591,7 +591,7 @@ class XlibWindow(BaseWindow):
             xlib.XFreePixmap(self._display, bmp)
 
             # Restrict to client area
-            xlib.XGrabPointer(self._display, self._window, 
+            xlib.XGrabPointer(self._display, self._window,
                 True,
                 0,
                 GrabModeAsync,
@@ -665,7 +665,7 @@ class XlibWindow(BaseWindow):
                     1, byref(property))
                 if result < 0:
                     raise XlibException('Could not create text property')
-            xlib.XSetTextProperty(self._display, 
+            xlib.XSetTextProperty(self._display,
                 self._window, byref(property), atom)
             # XXX <rj> Xlib doesn't like us freeing this
             #xlib.XFree(property.value)
@@ -680,7 +680,7 @@ class XlibWindow(BaseWindow):
         if len(atoms):
             atoms_ar = (Atom * len(atoms))(*atoms)
             xlib.XChangeProperty(self._display, self._window,
-                net_wm_state, atom_type, 32, PropModePrepend, 
+                net_wm_state, atom_type, 32, PropModePrepend,
                 atoms_ar, len(atoms))
         else:
             xlib.XDeleteProperty(self._display, self._window, net_wm_state)
@@ -730,7 +730,7 @@ class XlibWindow(BaseWindow):
     def _translate_modifiers(state):
         modifiers = 0
         if state & ShiftMask:
-            modifiers |= MOD_SHIFT  
+            modifiers |= MOD_SHIFT
         if state & ControlMask:
             modifiers |= MOD_CTRL
         if state & LockMask:
@@ -756,9 +756,9 @@ class XlibWindow(BaseWindow):
                 self._window, KeyPress, byref(auto_event))
             if result and event.xkey.time == auto_event.xkey.time:
                 buffer = create_string_buffer(16)
-                count = xlib.XLookupString(byref(auto_event), 
-                                           byref(buffer), 
-                                           len(buffer), 
+                count = xlib.XLookupString(byref(auto_event),
+                                           byref(buffer),
+                                           len(buffer),
                                            c_void_p(),
                                            c_void_p())
                 if count:
@@ -775,9 +775,9 @@ class XlibWindow(BaseWindow):
         if event.type == KeyPress:
             buffer = create_string_buffer(16)
             # TODO lookup UTF8
-            count = xlib.XLookupString(byref(event), 
-                                       byref(buffer), 
-                                       len(buffer), 
+            count = xlib.XLookupString(byref(event),
+                                       byref(buffer),
+                                       len(buffer),
                                        c_void_p(),
                                        c_void_p())
             if count:
@@ -834,7 +834,7 @@ class XlibWindow(BaseWindow):
         if buttons:
             # Drag event
             modifiers = self._translate_modifiers(event.xmotion.state)
-            self.dispatch_event(EVENT_MOUSE_DRAG, 
+            self.dispatch_event(EVENT_MOUSE_DRAG,
                 x, y, dx, dy, buttons, modifiers)
         else:
             # Motion event

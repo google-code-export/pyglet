@@ -48,6 +48,7 @@ if context.__class__.__name__ == 'XlibGLContext':
         print "GLX server version: 1.0"
         print "(and can't be bothered to enquire about anything else)"
     else:
+        from pyglet.window.xlib.glx.VERSION_1_3 import *
         print 'GLX server vendor:', glXQueryServerString(w._display, 0,
             GLX_VENDOR)
         print 'GLX server version:', glXQueryServerString(w._display, 0,

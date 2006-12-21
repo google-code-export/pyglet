@@ -158,7 +158,7 @@ class XlibPlatform(BasePlatform):
         else:
             attrib_list = None
 
-        if have_glx_version(config._display, 1, 3):
+        if have_glx_version(display, 1, 3):
             elements = c_int()
             configs = glXChooseFBConfig(display, screen._x_screen_id,
                 attrib_list, byref(elements))
@@ -212,9 +212,10 @@ def have_glx_version(display, major, minor=0):
     # glXQueryServerString was introduced in GLX 1.1, so we need to use the
     # 1.0 function here which queries the server implementation for its
     # version.
-    smajor = ctypes.c_int()
-    sminor = ctypes.c_int()
-    if not glXQueryVersion(display, byRef(smajor), byRef(sminor)):
+    #return False        # XXX for debugging 1.0 codepath
+    smajor = c_int()
+    sminor = c_int()
+    if not glXQueryVersion(display, byref(smajor), byref(sminor)):
         raise XlibException('Could not determine GLX version')
     if (smajor, sminor) < (major, minor):
         return False
@@ -241,7 +242,7 @@ class XlibScreen(BaseScreen):
 
 class XlibGLConfig10(BaseGLConfig):
     def __init__(self, display, screen, attrib_list):
-        super(XlibGLConfig, self).__init__()
+        super(XlibGLConfig10, self).__init__()
         self._display = display
         self._screen = screen
         self._attrib_list = attrib_list
@@ -256,7 +257,7 @@ class XlibGLConfig10(BaseGLConfig):
 
 class XlibGLConfig13(BaseGLConfig):
     def __init__(self, display, screen, fbconfig):
-        super(XlibGLConfig, self).__init__()
+        super(XlibGLConfig13, self).__init__()
         self._display = display
         self._screen = screen
         self._fbconfig = fbconfig

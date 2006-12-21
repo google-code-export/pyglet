@@ -143,7 +143,7 @@ class XlibPlatform(BasePlatform):
 
         factory.set_gl_attribute('x_renderable', True)
 
-        # Construct array of attributes for glXChooseFBConfig
+        # Construct array of attributes
         attrs = []
         for name, value in factory.get_gl_attributes().items():
             attr = _attribute_ids.get(name, None)
@@ -157,17 +157,20 @@ class XlibPlatform(BasePlatform):
             attrib_list = (c_int * len(attrs))(*attrs)
         else:
             attrib_list = None
-        elements = c_int()
-        configs = glXChooseFBConfig(display,
-            screen._x_screen_id, attrib_list, byref(elements))
-        if configs:
+
+        if have_glx_version(config._display, 1, 3):
+            elements = c_int()
+            configs = glXChooseFBConfig(display, screen._x_screen_id,
+                attrib_list, byref(elements))
+            if not configs:
+                return []
             result = []
             for i in range(elements.value):
-                result.append(XlibGLConfig(display, screen, configs[i]))
+                result.append(XlibGLConfig13(display, screen, configs[i]))
             xlib.XFree(configs)
             return result
         else:
-            return []
+            return [XlibGLConfig10(display, screen, attrib_list)]
 
     def create_context(self, factory):
         config = factory.get_config()
@@ -175,12 +178,11 @@ class XlibPlatform(BasePlatform):
         if context_share:
             context_share = context_share._context
 
-        # ensure we can call GLX 1.3 API
-        if not have_glx_version(config._display, 1, 3):
-            raise XlibException('GLX version 1.3+ required')
-
-        context = glXCreateNewContext(config._display, config._fbconfig,
-            GLX_RGBA_TYPE, context_share, True)
+        if have_glx_version(config._display, 1, 3):
+            context = glXCreateNewContext(config._display, config._fbconfig,
+                GLX_RGBA_TYPE, context_share, True)
+        else:
+            raise NotImplementedError('Need GLX 1.0 implementation')
 
         if context == GLXBadContext:
             raise XlibException('Invalid context share')
@@ -207,12 +209,22 @@ class XlibPlatform(BasePlatform):
         return display
 
 def have_glx_version(display, major, minor=0):
-    def test(version):
-        version = [int(v) for v in version.split('.')]
-        return version >= [major, minor]
-    if not test(glXQueryServerString(display, 0, GLX_VERSION)):
+    # glXQueryServerString was introduced in GLX 1.1, so we need to use the
+    # 1.0 function here which queries the server implementation for its
+    # version.
+    smajor = ctypes.c_int()
+    sminor = ctypes.c_int()
+    if not glXQueryVersion(display, byRef(smajor), byRef(sminor)):
+        raise XlibException('Could not determine GLX version')
+    if (smajor, sminor) < (major, minor):
         return False
-    return test(glXGetClientString(display, GLX_VERSION))
+
+    # ok, server passed, sanity check that the client passes too -- of
+    # course if the client is somehow < v1.1 this can't work as this
+    # function was also introduced in 1.1...
+    version = glXGetClientString(display, GLX_VERSION)
+    version = [int(v) for v in version.split('.')]
+    return version >= [major, minor]
 
 class XlibScreen(BaseScreen):
     def __init__(self, display, x_screen_id, x, y, width, height, xinerama):
@@ -227,7 +239,22 @@ class XlibScreen(BaseScreen):
             (self._x_screen_id, self.x, self.y, self.width, self.height,
              self._xinerama)
 
-class XlibGLConfig(BaseGLConfig):
+class XlibGLConfig10(BaseGLConfig):
+    def __init__(self, display, screen, attrib_list):
+        super(XlibGLConfig, self).__init__()
+        self._display = display
+        self._screen = screen
+        self._attrib_list = attrib_list
+        raise NotImplementedError('Need GLX 1.0 implementation')
+
+    def get_visual_info(self):
+        return glXChooseVisual(self._display, DefaultScreen(dpy),
+            self._attib_list)
+
+    def get_gl_attributes(self):
+        raise NotImplementedError('Need GLX 1.0 implementation')
+
+class XlibGLConfig13(BaseGLConfig):
     def __init__(self, display, screen, fbconfig):
         super(XlibGLConfig, self).__init__()
         self._display = display
@@ -240,6 +267,9 @@ class XlibGLConfig(BaseGLConfig):
                 self._fbconfig, attr, byref(value))
             if result >= 0:
                 self._attributes[name] = value.value
+
+    def get_visual_info(self):
+        return glXGetVisualFromFBConfig(self._display, self._fbconfig).contents
 
     def get_gl_attributes(self):
         return self._attributes
@@ -374,8 +404,8 @@ class XlibWindow(BaseWindow):
         if not self._window:
             root = xlib.XRootWindow(self._display, self._screen_id)
 
-            visual_info = glXGetVisualFromFBConfig(self._display,
-                config._fbconfig).contents
+            visual_info = config.get_visual_info()
+
             visual = visual_info.visual
             visual_id = xlib.XVisualIDFromVisual(visual)
             default_visual = xlib.XDefaultVisual(self._display, self._screen_id)

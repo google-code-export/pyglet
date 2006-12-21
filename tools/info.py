@@ -43,17 +43,26 @@ print 'Context is', context
 if context.__class__.__name__ == 'XlibGLContext':
     d = w._display
     print 'GLX %s direct'%(context.is_direct() and 'is' or 'is not')
-    print 'GLX server vendor:', glXQueryServerString(w._display, 0, GLX_VENDOR)
-    print 'GLX server version:', glXQueryServerString(w._display, 0,
-        GLX_VERSION)
-    print 'GLX server extensions:'
-    exts = glXQueryServerString(w._display, 0, GLX_EXTENSIONS)
-    print ' ', '\n  '.join(textwrap.wrap(exts))
-    print 'GLX client vendor:', glXGetClientString(w._display, GLX_VENDOR)
-    print 'GLX client version:', glXGetClientString(w._display, GLX_VERSION)
-    print 'GLX client extensions:'
-    print ' ', '\n  '.join(textwrap.wrap(glXGetClientString(w._display,
-        GLX_EXTENSIONS)))
-    print 'GLX extensions:'
-    print ' ', '\n '.join(textwrap.wrap(glXQueryExtensionsString(w._display,
-        0)))
+    from pyglet.window.xlib import have_glx_version
+    if not have_glx_version(d, 1, 1):
+        print "GLX server version: 1.0"
+        print "(and can't be bothered to enquire about anything else)"
+    else:
+        print 'GLX server vendor:', glXQueryServerString(w._display, 0,
+            GLX_VENDOR)
+        print 'GLX server version:', glXQueryServerString(w._display, 0,
+            GLX_VERSION)
+        print 'GLX server extensions:'
+        exts = glXQueryServerString(w._display, 0, GLX_EXTENSIONS)
+        print ' ', '\n  '.join(textwrap.wrap(exts))
+        print 'GLX client vendor:', glXGetClientString(w._display,
+            GLX_VENDOR)
+        print 'GLX client version:', glXGetClientString(w._display,
+            GLX_VERSION)
+        print 'GLX client extensions:'
+        exts = glXGetClientString(w._display, GLX_EXTENSIONS)
+        print ' ', '\n  '.join(textwrap.wrap(exts))
+        print 'GLX extensions:'
+        exts = glXQueryExtensionsString(w._display, 0)
+        print ' ', '\n '.join(textwrap.wrap(exts))
+

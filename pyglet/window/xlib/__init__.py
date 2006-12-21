@@ -176,7 +176,7 @@ class XlibPlatform(BasePlatform):
             context_share = context_share._context
 
         # ensure we can call GLX 1.3 API
-        if not config._display.have_glx_version(config._display, 1, 3):
+        if not have_glx_version(config._display, 1, 3):
             raise XlibException('GLX version 1.3+ required')
 
         context = glXCreateNewContext(config._display, config._fbconfig,
@@ -208,7 +208,7 @@ class XlibPlatform(BasePlatform):
 
 def have_glx_version(display, major, minor=0):
     def test(version):
-        version = [int(v) for v in ver.split('.')]
+        version = [int(v) for v in version.split('.')]
         return version >= [major, minor]
     if not test(glXQueryServerString(display, 0, GLX_VERSION)):
         return False

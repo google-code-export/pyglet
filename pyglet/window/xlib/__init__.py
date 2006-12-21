@@ -206,7 +206,8 @@ class XlibPlatform(BasePlatform):
             factory.set_x_display(display)
         return display
 
-class XlibDisplay(ptrDisplay):
+# XXX this should be a POINTER(Display) but we can't subclass that
+class XlibDisplay(c_void_p):
     def have_glx_version(self, major, minor=0):
         def test(version):
             version = [int(v) for v in ver.split('.')]

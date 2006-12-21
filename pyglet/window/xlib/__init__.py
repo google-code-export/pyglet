@@ -221,6 +221,7 @@ def have_glx_version(display, major, minor=0):
     # glXQueryServerString was introduced in GLX 1.1, so we need to use the
     # 1.0 function here which queries the server implementation for its
     # version.
+    return False
     smajor = c_int()
     sminor = c_int()
     if not glXQueryVersion(display, byref(smajor), byref(sminor)):

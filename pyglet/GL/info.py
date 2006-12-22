@@ -31,7 +31,11 @@ def set_context():
     _have_context = True
     _vendor = glGetString(GL_VENDOR)
     _renderer = glGetString(GL_RENDERER)
-    _extensions = glGetString(GL_EXTENSIONS).split()
+    _extensions = glGetString(GL_EXTENSIONS)
+    if _extensions:
+        _extensions = _extensions.split()
+    else:
+        _extensions = []
     _version = glGetString(GL_VERSION)
 
 def have_context():

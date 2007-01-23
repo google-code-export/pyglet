@@ -3,11 +3,20 @@
 '''Test framework for pyglet.  Reads details of components and capabilities
 from a requirements document, runs the appropriate unit tests.
 
+Collects results in a file named testrun.xml
+
 TODO
 ----
 
-Implement the --full-help option
+* Implement the --full-help option
 
+
+* Make modules non-interative by default (change flag to __interactive)
+
+Differences
+-----------
+
+* Skips tests requiring interaction if --non-interactive flag is set
 
 '''
 
@@ -23,23 +32,11 @@ import sys
 import time
 
 import reqparser
+from ut_utils import TestComponent
 
 LOG = logging.getLogger()
+SCRIPT_ROOT = normpath(dirname(sys.argv[0] or curdir))
 
-################################################################################
-
-class TestComponent(object):
-    """ A component under test. Related to a single RequirmentsComponent.
-    """
-    def __init__(self, req_comp):
-        self.req_comp = req_comp
-
-    @property
-    def name(self):
-        return self.req_comp.get_absname()
-
-    def __repr__(self):
-        return "TestComponent(%s)" % self.name
 
 ################################################################################
 
@@ -69,20 +66,19 @@ def configure_logging(filename, level):
     
 
 def make_option_parser():
-    script_root = normpath(dirname(sys.argv[0] or curdir))
     usage = "Usage: %prog [options] [test_names]"
     description = '''Runs Pyglet tests. If you specify test_names, only those tests will be run, otherwise all tests will be run. test_names may be a regular expression (e.g. "image" to just run image tests).'''
 
     result = optparse.OptionParser(usage=usage, description=description, version="%prog " + __version__)
 
     result.add_option("--requirements", 
-            default=normpath(join(script_root, pardir, 'doc', 
+            default=normpath(join(SCRIPT_ROOT, pardir, 'doc', 
                 'requirements.txt')),
             metavar="FILE",
             help="read requirements from FILE (defaults to %default)")
 
     result.add_option("--test-root",
-            default=script_root,
+            default=SCRIPT_ROOT,
             metavar="DIR",
             help="look for unit-tests in top-level directory DIR " 
                 "(defaults to %default)")
@@ -131,7 +127,7 @@ def make_option_parser():
                 "(defaults to %default)")
 
     result.add_option("--regression-path",
-            default=normpath(join(script_root, 'regression', 'images')),
+            default=normpath(join(SCRIPT_ROOT, 'regression', 'images')),
             metavar="DIR",
             help="look for and store regression test images in DIR " 
                 "(defaults to %default)")
@@ -167,6 +163,8 @@ def handle_args():
 
     configure_logging(opts.log_file, opts.log_level)
 
+    sys.path[1:1] = [opts.test_root]
+
     return opts, args
 
 
@@ -190,12 +188,21 @@ def fetch_req_components(file_name, test_names):
         return req_doc.get_all_components()
 
 def component_selected(req_comp, capabilities, developer):
-    """ Determines if the requirements component should be selected.
-    """
+    """ Determines if the requirements component should be selected. """
     level = reqparser.RequirementsComponent.FULL
     if developer:
         level = reqparser.RequirementsComponent.DEVELOPER
     return req_comp.is_implemented(capabilities, level)
+
+def run_remote(opts, test_comp):
+    """ Run the given test component in another process. """
+    # Write out params
+    # Create test result dir
+    remote_script = join(SCRIPT_ROOT, 'run_test.py')
+    os.spawnv(os.P_WAIT, sys.executable, [sys.executable, remote_script,
+        test_comp.name, opts.test_root, 'tmp'])
+    # Run remote test
+    # Interpret results
 
             
 def main():
@@ -210,11 +217,19 @@ def main():
     LOG.info('Reading requirements from %s', opts.requirements)
 
     req_comps = fetch_req_components(opts.requirements, args)
-    test_comps = [TestComponent(rc) for rc in req_comps 
-            if component_selected(rc, opts.capabilities, opts.developer)]
+    LOG.debug('Fetching matching test components')
+    test_comps = [TestComponent(rc.get_absname(), opts.regression_path) 
+            for rc in req_comps 
+                if component_selected(rc, opts.capabilities, opts.developer)]
+    LOG.info('%s tests to run', len(test_comps))
+
+    # TODO: create a tmp dir
 
     for tc in test_comps:
-        print tc.name
+        run_remote(opts, tc)
+
+    # TODO: write summary file
+    # TODO: Collect all together in a zip file. Delete tmp dir
     
 
 if __name__ == '__main__':

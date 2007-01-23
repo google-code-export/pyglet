@@ -1,11 +1,11 @@
-''' Parses a requirements document.
+'''Parses a requirements document.
 
-    Implementation Notes
-    --------------------
+Implementation Notes
+--------------------
 
-    Ported from Alex Holkner's original code. This code is now concerned
-    purely with modelling what components are implemented, and to what 
-    degree. 
+Ported from Alex Holkner's original code. This code is now concerned
+purely with modelling what components are implemented, and to what 
+degree. 
 '''
 
 __docformat__ = 'restructuredtext'

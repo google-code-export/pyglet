@@ -137,6 +137,12 @@ class AbstractImage(object):
 
     texture = property(get_texture)
 
+    def get_mipmapped_texture(self):
+        '''Retrieve a Texture instance with all mipmap levels filled in.'''
+        raise ImageException('Cannot retrieve mipmapped texture for %r' % self)
+
+    mipmapped_texture = property(get_mipmapped_texture)
+
     def get_tileable_texture(self):
         '''Retrieve a TileableTexture instance for this image.'''
         raise ImageException('Cannot retrieve tileable texture for %r' % self)
@@ -179,7 +185,7 @@ class AbstractImage(object):
         '''Draw `source` on this image.'''
         raise ImageException('Cannot blit images onto %r.' % self)
 
-    def blit_to_texture(self, target, x, y, depth=0):
+    def blit_to_texture(self, target, level, x, y, depth=0):
         '''Draw this image on the currently bound texture at `target`.'''
         raise ImageException('Cannot blit %r to a texture.' % self)
 
@@ -275,7 +281,7 @@ class ImageData(AbstractImage):
                          blank) 
             internalformat = None
 
-        self.blit_to_texture(GL_TEXTURE_2D, 0, 0, 0, internalformat)
+        self.blit_to_texture(GL_TEXTURE_2D, 0, 0, 0, 0, internalformat)
         
         self._current_texture = texture
         return texture
@@ -285,7 +291,7 @@ class ImageData(AbstractImage):
     def blit_to_buffer(self, x, y, z):
         self.texture.blit_to_buffer(x, y, z)
         
-    def blit_to_texture(self, target, x, y, depth, internalformat=None):
+    def blit_to_texture(self, target, level, x, y, depth, internalformat=None):
         '''Draw this image to to the currently bound texture at `target`.
         If `internalformat` is specified, glTexImage is used to initialise
         the texture; otherwise, glTexSubImage is used to update a region.
@@ -322,16 +328,14 @@ class ImageData(AbstractImage):
         glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length)
 
         if internalformat:
-            glTexImage2D(GL_TEXTURE_2D,
-                         0,
+            glTexImage2D(GL_TEXTURE_2D, level,
                          internalformat,
                          self.width, self.height,
                          0,
                          format, type,
                          data)
         else:
-            glTexSubImage2D(GL_TEXTURE_2D,
-                            0,
+            glTexSubImage2D(GL_TEXTURE_2D, level,
                             x, y,
                             self.width, self.height,
                             format, type,
@@ -522,10 +526,10 @@ class CompressedImageData(AbstractImage):
     def blit_to_buffer(self, x, y, z):
         self.texture.blit_to_buffer(x, y, z)
 
-    def blit_to_texture(self, target, x, y, z):
+    def blit_to_texture(self, target, level, x, y, z):
         self.verify_driver_supported()
 
-        glCompressedTexSubImage2DARB(target, 0, 
+        glCompressedTexSubImage2DARB(target, level, 
             x, y,
             self.width, self.height,
             self.gl_format,
@@ -555,6 +559,7 @@ class Texture(AbstractImage):
     '''
 
     tex_coords = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0))
+    level = 0
 
     def __init__(self, width, height, target, id):
         super(Texture, self).__init__(width, height)
@@ -629,7 +634,7 @@ class Texture(AbstractImage):
 
     def blit(self, source, x, y, z):
         glBindTexture(self.target, self.id)
-        source.blit_to_texture(self.target, x, y, z)
+        source.blit_to_texture(self.target, self.level, x, y, z)
 
     # no implementation of blit_to_texture yet (could use aux buffer)
 
@@ -818,14 +823,13 @@ class ColorBufferImage(BufferImage):
             width = texture.owner.width
             height = texture.owner.height
             blank = (c_ubyte * (width * height * 4))()
-            glTexImage2D(GL_TEXTURE_2D,
-                         0,
+            glTexImage2D(GL_TEXTURE_2D, texture.level,
                          GL_RGBA,
                          width, height,
                          0,
                          GL_RGBA, GL_UNSIGNED_BYTE,
                          blank)
-            self.blit_to_texture(GL_TEXTURE_2D, 0, 0, 0)
+            self.blit_to_texture(GL_TEXTURE_2D, texture.level, 0, 0, 0)
         else:
             glReadBuffer(self.gl_buffer)
             glCopyTexImage2D(GL_TEXTURE_2D,
@@ -839,9 +843,9 @@ class ColorBufferImage(BufferImage):
         # XXX blits only to enabled buffers.
         source.blit_to_buffer(x, y, z)
 
-    def blit_to_texture(self, target, x, y, z):
+    def blit_to_texture(self, target, level, x, y, z):
         glReadBuffer(self.gl_buffer)
-        glCopyTexSubImage2D(target, 0, 
+        glCopyTexSubImage2D(target, level, 
                             x, y,
                             self.x, self.y, self.width, self.height) 
 

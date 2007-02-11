@@ -87,7 +87,7 @@ class SolidColorImagePattern(ImagePattern):
         '''
         self.color = '%c%c%c%c' % color
 
-    def create_image(width, height):
+    def create_image(self, width, height):
         data = self.color * width * height
         return ImageData(width, height, 'RGBA', data)
 
@@ -101,7 +101,7 @@ class CheckerImagePattern(ImagePattern):
     a checkerboard appearance.
     ''' 
 
-    def __init__(self, color1=(150,150,150,255), color2=(200,200,200,255))
+    def __init__(self, color1=(150,150,150,255), color2=(200,200,200,255)):
         '''Initialise with the given colors.
 
         'color1' and 'color2' must be 4-tuples of ints in range [0,255].
@@ -109,11 +109,12 @@ class CheckerImagePattern(ImagePattern):
         self.color1 = '%c%c%c%c' % color1
         self.color2 = '%c%c%c%c' % color2
 
-    def create_image(width, height):
-        hw = size/2
-        row1 = self.color1 * hw + color2 * hw
-        row2 = self.color2 * hw + self.colour1 * hw
-        data = row1 * height + row2 * height
+    def create_image(self, width, height):
+        hw = width/2
+        hh = height/2
+        row1 = self.color1 * hw + self.color2 * hw
+        row2 = self.color2 * hw + self.color1 * hw
+        data = row1 * hh + row2 * hh
         return ImageData(width, height, 'RGBA', data)
 
 class AbstractImage(object):
@@ -217,7 +218,6 @@ class ImageData(AbstractImage):
         if not pitch:
             pitch = width * len(format)
         self._current_pitch = self.pitch = pitch
-        self.image_data = self
         self._current_texture = None
 
     image_data = property(lambda self: self)
@@ -280,7 +280,7 @@ class ImageData(AbstractImage):
         self._current_texture = texture
         return texture
 
-    texture = get_texture
+    texture = property(get_texture)
 
     def blit_to_buffer(self, x, y, z):
         self.texture.blit_to_buffer(x, y, z)
@@ -501,7 +501,7 @@ class Texture(AbstractImage):
         this constructor ensures that the smallest powers of 2 above the
         minimum dimensions specified are used.
         '''
-        if target not in (GL_TEXTURE_RECTANGLE_EXT, GL_TEXTURE_RECTANGLE_ARB):
+        if target not in (GL_TEXTURE_RECTANGLE_NV, GL_TEXTURE_RECTANGLE_ARB):
             width = _nearest_pow2(min_width)
             height = _nearest_pow2(min_height)
         id = GLuint()
@@ -575,7 +575,7 @@ class Texture(AbstractImage):
              t[3][0], t[3][1], t[3][2], 1., 
              x,       y + h,   z,       1.)
 
-        glPushAttribs(GL_ENABLE_BIT)
+        glPushAttrib(GL_ENABLE_BIT)
         glEnable(self.target)
         glBindTexture(self.target, self.id)
         glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT)
@@ -640,7 +640,7 @@ class BufferManager(object):
                                  GL_AUX3][:aux_buffers.value]
 
         stencil_bits = GLint()
-        glGetIntegerv(GL_STENCIL_BITS, byref(stencil_bits)
+        glGetIntegerv(GL_STENCIL_BITS, byref(stencil_bits))
         self.free_stencil_bits = range(stencil_bits.value)
 
         self.refs = []
@@ -654,6 +654,7 @@ class BufferManager(object):
         if not self.color_buffer:
             viewport = self.get_viewport()
             self.color_buffer = ColorBufferImage(*viewport)
+        return self.color_buffer
 
     def get_aux_buffer(self):
         if not self.free_aux_buffers:
@@ -666,7 +667,7 @@ class BufferManager(object):
 
         def release_buffer(ref, self=self):
             self.free_aux_buffers.insert(0, gl_buffer)
-        self.refs.append(weakref.ref(buffer, release_buffer)
+        self.refs.append(weakref.ref(buffer, release_buffer))
             
         return buffer
 
@@ -681,7 +682,7 @@ class BufferManager(object):
 
         def release_buffer(ref, self=self):
             self.free_stencil_bits.insert(0, stencil_bit)
-        self.refs.append(weakref.ref(buffer, release_buffer)
+        self.refs.append(weakref.ref(buffer, release_buffer))
 
         return buffer
 
@@ -732,7 +733,7 @@ class BufferImage(AbstractImage):
         region.owner = self
         return region
 
-class ColorBufferImage(BufferImage)
+class ColorBufferImage(BufferImage):
     gl_format = GL_RGBA
     format = 'RGBA'
 
@@ -769,7 +770,7 @@ class ColorBufferImage(BufferImage)
     def blit_to_texture(self, target, x, y, z):
         glReadBuffer(self.gl_buffer)
         glCopyTexSubImage2D(target, 0, 
-                            x, y
+                            x, y,
                             self.x, self.y, self.width, self.height) 
 
     # XXX no blit_to_buffer implementation (can use EXT_framebuffer_blit)
@@ -791,7 +792,7 @@ class AllocatingTextureAtlas(Texture):
     x = 0
     y = 0
     line_height = 0
-    subimage_class = TextureSubImage
+    subimage_class = TextureRegion
 
     def allocate(self, width, height):
         '''Returns (x, y) position for a new glyph, and reserves that

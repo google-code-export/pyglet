@@ -202,6 +202,9 @@ class ImageData(AbstractImage):
     _swap3_pattern = re.compile('(.)(.)(.)', re.DOTALL)
     _swap4_pattern = re.compile('(.)(.)(.)(.)', re.DOTALL)
 
+    _current_texture = None
+    _current_mipmap_texture = None
+
     def __init__(self, width, height, format, data, pitch=None):
         '''Initialise image data.
 
@@ -224,7 +227,7 @@ class ImageData(AbstractImage):
         if not pitch:
             pitch = width * len(format)
         self._current_pitch = self.pitch = pitch
-        self._current_texture = None
+        self.mipmap_images = []
 
     image_data = property(lambda self: self)
 
@@ -248,8 +251,37 @@ class ImageData(AbstractImage):
         self._current_format = self.format
         self._current_pitch = self.pitch
         self._current_texture = None
+        self._current_mipmapped_texture = None
 
     data = property(get_data, set_data)
+
+    def set_mipmap_image(self, level, image):
+        '''Set a mipmap image for a particular level >= 1.  Image must
+        have correct dimensions for that mipmap level.  The mipmap image
+        will be applied to textures obtained via the `mipmapped_image`
+        attribute.
+        '''
+
+        if level == 0:
+            raise ImageException(
+                'Cannot set mipmap image at level 0 (it is this image)')
+
+        if not _is_pow2(self.width) or not _is_pow2(self.height):
+            raise ImageException(
+                'Image dimensions must be powers of 2 to use mipmaps.')
+
+        # Check dimensions of mipmap
+        width, height = self.width, self.height
+        for i in range(level):
+            width >>= 1
+            height >>= 1
+        if width != image.width or height != image.height:
+            raise ImageException(
+                'Mipmap image has wrong dimensions for level %d' % level)
+
+        # Extend mipmap_images list to required level
+        self.mipmap_images += [None] * (level - len(self.mipmap_images))
+        self.mipmap_images[level - 1] = data
 
     def get_texture(self):
         if self._current_texture:
@@ -266,7 +298,6 @@ class ImageData(AbstractImage):
 
         glBindTexture(GL_TEXTURE_2D, texture.id)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 
         if subimage:
             width = texture.owner.width
@@ -287,6 +318,49 @@ class ImageData(AbstractImage):
         return texture
 
     texture = property(get_texture)
+
+    def get_mipmapped_texture(self):
+        '''Return a Texture with mipmaps.  
+        
+        If `set_mipmap_image` has been called with at least one image, the set
+        of images defined will be used.  Otherwise, mipmaps will be
+        automatically generated.
+
+        The texture dimensions must be powers of 2 to use mipmaps.
+        '''
+        if self._current_mipmap_texture:
+            return self._current_mipmap_texture
+
+        if not _is_pow2(self.width) or not _is_pow2(self.height):
+            raise ImageException(
+                'Image dimensions must be powers of 2 to use mipmaps.')
+        
+        texture = Texture.create_for_size(
+            GL_TEXTURE_2D, self.width, self.height)
+        internalformat = self._get_internalformat(self.format)
+
+        glBindTexture(GL_TEXTURE_2D, texture.id)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                        GL_LINEAR_MIPMAP_LINEAR)
+
+        if self.mipmap_images:
+            self.blit_to_texture(GL_TEXTURE_2D, 0, 0, 0, 0, internalformat)
+            level = 0
+            for image in self.mipmap_images:
+                level += 1
+                if image:
+                    image.blit_to_texture(GL_TEXTURE_2D, level, 
+                        0, 0, 0, internalformat)
+            # TODO: should set base and max mipmap level if some mipmaps
+            # are missing.
+        elif gl_info.have_version(1, 4):
+            glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE)
+            self.blit_to_texture(GL_TEXTURE_2D, 0, 0, 0, 0, internalformat)
+        else:
+            raise NotImplementedError('TODO: gluBuild2DMipmaps')
+
+        self._current_mipmap_texture = texture
+        return texture
 
     def blit_to_buffer(self, x, y, z):
         self.texture.blit_to_buffer(x, y, z)
@@ -475,6 +549,7 @@ class CompressedImageData(AbstractImage):
 
     _have_extension = None
     _current_texture = None
+    _current_mipmapped_texture = None
 
     def __init__(self, width, height, gl_format, data, extension=None):
         '''Initialise a CompressedImageData.
@@ -491,6 +566,19 @@ class CompressedImageData(AbstractImage):
         self.data = data
         self.gl_format = gl_format
         self.extension = extension
+        self.mipmap_data = []
+
+    def set_mipmap_data(self, level, data):
+        '''Set data for a mipmap level.
+
+        Data must be in same compressed format as image, and have correct
+        dimensions for the mipmap level (this is not checked).  If any
+        mipmap levels are specified, they are used; otherwise, mipmaps
+        for `mipmapped_texture` are generated automatically.
+        '''
+        # Extend mipmap_data list to required level
+        self.mipmap_data += [None] * (level - len(self.mipmap_data))
+        self.mipmap_data[level - 1] = data
 
     def verify_driver_supported(self):
         if self._have_extension is None and self.extension:
@@ -508,11 +596,8 @@ class CompressedImageData(AbstractImage):
         texture = Texture.create_for_size(
             GL_TEXTURE_2D, self.width, self.height)
         glBindTexture(GL_TEXTURE_2D, texture.id)
-
-        # XXX temporary
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-        
+
         glCompressedTexImage2DARB(GL_TEXTURE_2D, 0,
             self.gl_format,
             self.width, self.height, 0,
@@ -522,6 +607,44 @@ class CompressedImageData(AbstractImage):
         return texture
 
     texture = property(get_texture)
+
+    def get_mipmapped_texture(self):
+        if self._current_mipmap_texture:
+            return self._current_mipmap_texture
+
+        self.verify_driver_supported()
+
+        texture = Texture.create_for_size(
+            GL_TEXTURE_2D, self.width, self.height)
+        glBindTexture(GL_TEXTURE_2D, texture.id)
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                        GL_LINEAR_MIPMAP_LINEAR)
+
+        if not self.mipmap_data:
+            if not gl_info.have_version(1, 4):
+                raise ImageException(
+                  'Require GL 1.4 to generate mipmaps for compressed textures')
+            glTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_TRUE)
+
+        glCompressedTexImage2DARB(GL_TEXTURE_2D, 0,
+            self.gl_format,
+            self.width, self.height, 0,
+            len(self.data), self.data) 
+
+        width, height = self.width, self.height
+        level = 0
+        for data in self.mipmap_data:
+            width >>= 1
+            height >>= 1
+            level += 1
+            glCompressedTexImage2DARB(GL_TEXTURE_2D, level,
+                self.gl_format,
+                width, height, 0,
+                len(data), data)
+
+        self._current_mipmap_texture = texture
+        return texture
 
     def blit_to_buffer(self, x, y, z):
         self.texture.blit_to_buffer(x, y, z)

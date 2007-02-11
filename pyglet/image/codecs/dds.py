@@ -167,7 +167,7 @@ class DDSImageDecoder(ImageDecoder):
         else:
             block_size = 16
 
-        mipmap_images = []
+        datas = []
         w, h = width, height
         for i in range(mipmaps):
             if not w and not h:
@@ -178,14 +178,18 @@ class DDSImageDecoder(ImageDecoder):
                 h = 1
             size = ((w + 3) / 4) * ((h + 3) / 4) * block_size
             data = file.read(size)
-            break
-            # XXX mipmap load
-            #mipmap_images.append(DDSMipmap(i, w, h, file.read(size)))
-            #w >>= 1
-            #h >>= 1
+            datas.append(data)
+            w >>= 1
+            h >>= 1
 
-        return CompressedImageData(width, height, format, data,
+        image = CompressedImageData(width, height, format, datas[0],
             'GL_EXT_texture_compression_s3tc')
+        level = 0
+        for data in datas[1:]:
+            level += 1
+            image.set_mipmap_data(level, data)
+
+        return image
 
 def get_decoders():
     return [DDSImageDecoder()]

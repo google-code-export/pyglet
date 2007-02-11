@@ -36,9 +36,8 @@ class PNGImageDecoder(ImageDecoder):
                 format = 'RGBA'
             else:
                 format = 'RGB'
-        type = GL_UNSIGNED_BYTE
-        return RawImage(pixels.tostring(), width, height, format, type,
-            top_to_bottom=True)
+        pitch = len(format) * width
+        return ImageData(width, height, format, pixels.tostring(), -pitch)
 
 class PNGImageEncoder(ImageEncoder):
     def get_file_extensions(self):

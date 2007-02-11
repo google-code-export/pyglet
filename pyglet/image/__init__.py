@@ -9,6 +9,7 @@ __version__ = '$Id$'
 import sys
 import re
 import warnings
+import weakref
 
 from ctypes import *
 from math import ceil
@@ -16,7 +17,7 @@ from StringIO import StringIO
 
 from pyglet.gl import *
 from pyglet.gl.gl_info import *
-from pyglet.image.codecs import *
+from pyglet.window import *
 
 class ImageException(Exception):
     pass
@@ -556,7 +557,7 @@ class Texture(AbstractImage):
 
     def blit(self, source, x, y, z):
         glBindTexture(self.target, self.id)
-        source.blit_to_texture(x, y, z)
+        source.blit_to_texture(self.target, x, y, z)
 
     # no implementation of blit_to_texture yet (could use aux buffer)
 
@@ -623,70 +624,165 @@ class TextureRegion(Texture):
         region.owner = self.owner
         return region
 
+class BufferManager(object):
+    '''Manages the set of framebuffers for a context.  This class must
+    be singleton per context.
+    '''
+    def __init__(self):
+        self.color_buffer = None
+        self.depth_buffer = None
+
+        aux_buffers = GLint()
+        glGetIntegerv(GL_AUX_BUFFERS, byref(aux_buffers))
+        self.free_aux_buffers = [GL_AUX0, 
+                                 GL_AUX1, 
+                                 GL_AUX2,
+                                 GL_AUX3][:aux_buffers.value]
+
+        stencil_bits = GLint()
+        glGetIntegerv(GL_STENCIL_BITS, byref(stencil_bits)
+        self.free_stencil_bits = range(stencil_bits.value)
+
+        self.refs = []
+
+    def get_viewport(self):
+        viewport = (GLint * 4)()
+        glGetIntegerv(GL_VIEWPORT, viewport)
+        return viewport
+    
+    def get_color_buffer(self):
+        if not self.color_buffer:
+            viewport = self.get_viewport()
+            self.color_buffer = ColorBufferImage(*viewport)
+
+    def get_aux_buffer(self):
+        if not self.free_aux_buffers:
+            raise ImageException('No free aux buffer is available.')
+
+        gl_buffer = self.free_aux_buffers.pop(0)
+        viewport = self.get_viewport()
+        buffer = ColorBufferImage(*viewport)
+        buffer.gl_buffer = gl_buffer
+
+        def release_buffer(ref, self=self):
+            self.free_aux_buffers.insert(0, gl_buffer)
+        self.refs.append(weakref.ref(buffer, release_buffer)
+            
+        return buffer
+
+    def get_buffer_mask(self):
+        if not self.free_stencil_bits:
+            raise ImageException('No free stencil bits are available.')
+
+        stencil_bit = self.free_stencil_bits.pop(0)
+        viewport = self.get_viewport()
+        buffer = BufferImageMask(x, y, width, height)
+        buffer.stencil_bit = stencil_bit
+
+        def release_buffer(ref, self=self):
+            self.free_stencil_bits.insert(0, stencil_bit)
+        self.refs.append(weakref.ref(buffer, release_buffer)
+
+        return buffer
+
+def get_buffer_manager():
+    context = get_current_context()
+    if not hasattr(context, 'image_buffer_manager'):
+        context.image_buffer_manager = BufferManager()
+    return context.image_buffer_manager
+
+# XXX BufferImage could be generalised to support EXT_framebuffer_object's
+# renderbuffer.
 class BufferImage(AbstractImage):
-    def __init__(self, gl_format=GL_RGBA, buffer=GL_BACK, 
-                 x=None, y=None, width=None, height=None):
-        self.gl_format = gl_format
-        self.buffer = buffer
+    gl_buffer = GL_BACK
+    gl_format = 0
+    format = ''
+    owner = None
+
+    # TODO: enable methods
+
+    def __init__(self, x, y, width, height):
         self.x = x
         self.y = y
         self.width = width
         self.height = height
 
-    def get_raw_image(self, type=GL_UNSIGNED_BYTE):
+    def get_image_data(self):
+        buffer = (GLubyte * (len(self.format) * self.width * self.height))()
+
         x = self.x
         y = self.y
-        width = self.width
-        height = self.height
-        viewport = (c_int * 4)()
-        glGetIntegerv(GL_VIEWPORT, viewport)
-        if x is None:
-            x = viewport[0]
-        if y is None:
-            y = viewport[1]
-        if width is None:
-            width = viewport[2]
-        if height is None:
-            height = viewport[3]
+        if self.owner:
+            x += self.owner.x
+            y += self.owner.y
 
+        glReadBuffer(self.gl_buffer)
+        glReadPixels(x, y, self.width, self.height, 
+                     self.gl_format, GL_UNSIGNED_BYTE, buffer)
 
-        gl_formats = {
-            GL_STENCIL_INDEX: 'L',
-            GL_DEPTH_COMPONENT: 'L',
-            GL_RED: 'L',
-            GL_GREEN: 'L',
-            GL_BLUE: 'L',
-            GL_ALPHA: 'A',
-            GL_RGB: 'RGB',
-            GL_BGR: 'BGR',
-            GL_RGBA: 'RGBA',
-            GL_BGRA: 'BGRA',
-            GL_LUMINANCE: 'L',
-            GL_LUMINANCE_ALPHA: 'LA',
-        }
-        format = gl_formats[self.gl_format]
-        pixels = (self.get_type_ctype(type) * (len(format) * width * height))()
+        return ImageData(width, height, format, buffer)
 
-        glReadBuffer(self.buffer)
-        glReadPixels(x, y, width, height, self.gl_format, type, pixels)
+    image_data = property(get_image_data)
 
-        return RawImage(pixels, width, height, format, type)
+    def get_region(self, x, y, width, height):
+        if self.owner:
+            return self.owner.get_region(x + self.x, y + self.y, width, height)
 
-    def texture(self, internalformat=None):
-        raise NotImplementedError('TODO')
+        region = self.__class__(x + self.x, y + self.y, width, height)
+        region.owner = self
+        return region
 
-    def texture_subimage(self, x, y):
-        raise NotImplementedError('TODO')
+class ColorBufferImage(BufferImage)
+    gl_format = GL_RGBA
+    format = 'RGBA'
 
-class StencilImage(BufferImage):
-    def __init__(self, x=None, y=None, width=None, height=None):
-        super(StencilImage, self).__init__(GL_STENCIL_INDEX, GL_BACK,
-            x, y, width, height)
+    def get_texture(self):
+        texture = Texture.create_for_size(self.width, self.height)
+        glBindTexture(GL_TEXTURE_2D, texture.id)
 
-class DepthImage(BufferImage):
-    def __init__(self, x=None, y=None, width=None, height=None):
-        super(DepthImage, self).__init__(GL_DEPTH_COMPONENT, GL_BACK,
-            x, y, width, height)
+        if texture.width != self.width or texture.height != self.height:
+            texture = texture.get_region(0, 0, self.width, self.height)
+            width = texture.owner.width
+            height = texture.owner.height
+            blank = (c_ubyte * (width * height * 4))()
+            glTexImage2D(GL_TEXTURE_2D,
+                         0,
+                         GL_RGBA,
+                         width, height,
+                         0,
+                         GL_RGBA, GL_UNSIGNED_BYTE,
+                         blank)
+            self.blit_to_texture(GL_TEXTURE_2D, 0, 0, 0)
+        else:
+            glReadBuffer(self.gl_buffer)
+            glCopyTexImage2D(GL_TEXTURE_2D,
+                             GL_RGBA,
+                             self.x, self.y, self.width, self.height,
+                             0)
+
+    texture = property(get_texture)
+
+    def blit(self, source, x, y, z):
+        # XXX blits only to enabled buffers.
+        source.blit_to_buffer(x, y, z)
+
+    def blit_to_texture(self, target, x, y, z):
+        glReadBuffer(self.gl_buffer)
+        glCopyTexSubImage2D(target, 0, 
+                            x, y
+                            self.x, self.y, self.width, self.height) 
+
+    # XXX no blit_to_buffer implementation (can use EXT_framebuffer_blit)
+
+class DepthBufferImage(BufferImage):
+    gl_format = GL_DEPTH_COMPONENT
+    format = 'L'
+
+class BufferImageMask(BufferImage):
+    gl_format = GL_STENCIL_INDEX
+    format = 'L'
+
+    # TODO mask methods
 
 class AllocatingTextureAtlasOutOfSpaceException(ImageException):
     pass
@@ -714,6 +810,7 @@ class AllocatingTextureAtlas(Texture):
 
 
 # Initialise default codecs
+from pyglet.image.codecs import *
 add_default_image_codecs()
 
 

@@ -463,6 +463,74 @@ class ImageData(AbstractImage):
             return GL_INTENSITY
         return GL_RGBA
 
+class CompressedImageData(AbstractImage):
+    '''Image representing some compressed data suitable for direct uploading
+    to driver.
+    '''
+    # TODO software decoding interface
+
+    _have_extension = None
+    _current_texture = None
+
+    def __init__(self, width, height, gl_format, data, extension=None):
+        '''Initialise a CompressedImageData.
+
+        `data` is compressed in format `gl_format`, for example,
+        GL_COMPRESSED_RGBA_S3TC_DXT5_EXT.  `extension`, if specified,
+        gives the name of a GL extension to check for before creating
+        a texture.
+        '''
+        if not _is_pow2(width) or not _is_pow2(height):
+            raise ImageException('Dimensions of %r must be powers of 2' % self)
+
+        super(CompressedImageData, self).__init__(width, height)
+        self.data = data
+        self.gl_format = gl_format
+        self.extension = extension
+
+    def verify_driver_supported(self):
+        if self._have_extension is None and self.extension:
+            self._have_extension = gl_info.have_extension(self.extension)
+        if not self._have_extension:
+            raise ImageException('%s is required to decode %r' % \
+                (self.extension, self))
+
+    def get_texture(self):
+        if self._current_texture:
+            return self._current_texture
+
+        self.verify_driver_supported()
+
+        texture = Texture.create_for_size(
+            GL_TEXTURE_2D, self.width, self.height)
+        glBindTexture(GL_TEXTURE_2D, texture.id)
+
+        # XXX temporary
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        
+        glCompressedTexImage2DARB(GL_TEXTURE_2D, 0,
+            self.gl_format,
+            self.width, self.height, 0,
+            len(self.data), self.data)
+            
+        self._current_texture = texture
+        return texture
+
+    texture = property(get_texture)
+
+    def blit_to_buffer(self, x, y, z):
+        self.texture.blit_to_buffer(x, y, z)
+
+    def blit_to_texture(self, target, x, y, z):
+        self.verify_driver_supported()
+
+        glCompressedTexSubImage2DARB(target, 0, 
+            x, y,
+            self.width, self.height,
+            self.gl_format,
+            len(self.data), self.data)
+        
 def _nearest_pow2(v):
     # From http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
     # Credit: Sean Anderson
@@ -473,6 +541,10 @@ def _nearest_pow2(v):
     v |= v >> 8
     v |= v >> 16
     return v + 1
+
+def _is_pow2(v):
+    # http://graphics.stanford.edu/~seander/bithacks.html#DetermineIfPowerOf2
+    return (v & (v - 1)) == 0
 
 class Texture(AbstractImage):
     '''An image loaded into video memory that can be efficiently drawn

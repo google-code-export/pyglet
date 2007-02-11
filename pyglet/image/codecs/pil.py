@@ -38,7 +38,7 @@ class PILImageDecoder(ImageDecoder):
         type = GL_UNSIGNED_BYTE
         width, height = image.size
 
-        return RawImage(image.tostring(), width, height, image.mode, type)
+        return ImageData(width, height, image.mode, image.tostring())
 
 class PILImageEncoder(ImageEncoder):
     def get_file_extensions(self):

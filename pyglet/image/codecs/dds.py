@@ -12,7 +12,6 @@ from ctypes import *
 import struct
 
 from pyglet.gl import *
-from pyglet.gl.gl_info import *
 from pyglet.image import *
 from pyglet.image.codecs import *
 
@@ -122,10 +121,6 @@ class DDSImageDecoder(ImageDecoder):
         return ['.dds']
 
     def decode(self, file, filename):
-        # TODO: Write a software decoding fallback.
-        if not gl_info.have_extension('GL_EXT_texture_compression_s3tc'):
-            raise DDSException('S3TC extension not supported by device.')
-
         header = file.read(DDSURFACEDESC2.get_size())
         desc = DDSURFACEDESC2(header)
         if desc.dwMagic != 'DDS ' or desc.dwSize != 124:
@@ -182,55 +177,15 @@ class DDSImageDecoder(ImageDecoder):
             if not h:
                 h = 1
             size = ((w + 3) / 4) * ((h + 3) / 4) * block_size
-            mipmap_images.append(DDSMipmap(i, w, h, file.read(size)))
-            w >>= 1
-            h >>= 1
+            data = file.read(size)
+            break
+            # XXX mipmap load
+            #mipmap_images.append(DDSMipmap(i, w, h, file.read(size)))
+            #w >>= 1
+            #h >>= 1
 
-        return DDSCompressedImage(width, height, format, mipmap_images)
-   
-class DDSMipmap(object):
-    def __init__(self, level, width, height, data):
-        self.level = level
-        self.width = width
-        self.height = height
-        self.data = data
-
-class DDSCompressedImage(Image):
-    def __init__(self, width, height, format, mipmaps):
-        super(DDSCompressedImage, self).__init__(width, height)
-        self.format = format
-        self.mipmaps = mipmaps
-
-    def texture(self, internalformat=None):
-        id = c_uint()
-        glGenTextures(1, byref(id))
-        glBindTexture(GL_TEXTURE_2D, id.value)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-            GL_LINEAR_MIPMAP_LINEAR)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
-
-        for mipmap in self.mipmaps:
-            glCompressedTexImage2DARB(GL_TEXTURE_2D, 
-                mipmap.level, self.format, 
-                mipmap.width, mipmap.height, 0, 
-                len(mipmap.data), mipmap.data)
-
-        return Texture(self.width, self.height, 'RGBA', id, 1., 1.)
-
-    def texture_subimage(self, x, y):
-        for mipmap in self.mipmaps:
-            glCompressedTexSubImage2DARB(GL_TEXTURE_2D,
-                mipmap.level,
-                x, y, 
-                mipmap.width,
-                mipmap.height,
-                self.format,
-                len(mipmap.data),
-                mipmap.data)
-
-    def get_raw_image(self, type=GL_UNSIGNED_BYTE):
-        raise NotImplementedError('No software decoder for DDSCompressedImage')
-        
+        return CompressedImageData(width, height, format, data,
+            'GL_EXT_texture_compression_s3tc')
 
 def get_decoders():
     return [DDSImageDecoder()]

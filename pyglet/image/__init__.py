@@ -189,6 +189,10 @@ class AbstractImage(object):
         '''Draw this image on the currently bound texture at `target`.'''
         raise ImageException('Cannot blit %r to a texture.' % self)
 
+    def blit_to_depth_texture(self, target, level, x, y, depth=0):
+        '''Draw this image on the currently bound depth texture at `target`.'''
+        raise ImageException('Cannot blit %r to a depth texture.' % self)
+
     def blit_to_buffer(self, x, y, z):
         '''Draw this image to the currently enabled buffers.'''
         raise ImageException('Cannot blit %r to a framebuffer.' % self)
@@ -796,7 +800,6 @@ class Texture(AbstractImage):
         return TextureRegion(width, height, self,
             ((u1, v1, z1), (u2, v1, z2), (u2, v2, z3), (u1, v2, z4)))
 
-
 class TextureRegion(Texture):
     '''A rectangular region of a texture, presented as if it were
     a separate texture.
@@ -823,6 +826,11 @@ class TextureRegion(Texture):
             me_x + x, me_y + y, width, height)
         region.owner = self.owner
         return region
+
+class DepthTexture(Texture):
+    def blit(self, source, x, y, z):
+        glBindTexture(GL_TEXTURE_2D, self.id)
+        source.blit_depth_to_texture(self.level, x, y, z)
 
 class BufferManager(object):
     '''Manages the set of framebuffers for a context.  This class must
@@ -870,6 +878,12 @@ class BufferManager(object):
         self.refs.append(weakref.ref(buffer, release_buffer))
             
         return buffer
+
+    def get_depth_buffer(self):
+        if not self.depth_buffer:
+            viewport = self.get_viewport()
+            self.depth_buffer = DepthBufferImage(*viewport)
+        return self.depth_buffer
 
     def get_buffer_mask(self):
         if not self.free_stencil_bits:
@@ -955,7 +969,7 @@ class ColorBufferImage(BufferImage):
             self.blit_to_texture(GL_TEXTURE_2D, texture.level, 0, 0, 0)
         else:
             glReadBuffer(self.gl_buffer)
-            glCopyTexImage2D(GL_TEXTURE_2D,
+            glCopyTexImage2D(GL_TEXTURE_2D, 0,
                              GL_RGBA,
                              self.x, self.y, self.width, self.height,
                              0)
@@ -977,6 +991,29 @@ class ColorBufferImage(BufferImage):
 class DepthBufferImage(BufferImage):
     gl_format = GL_DEPTH_COMPONENT
     format = 'L'
+
+    def get_texture(self):
+        if not _is_pow2(self.width) or not _is_pow2(self.height):
+            raise ImageException(
+                'Depth texture requires that buffer dimensions be powers of 2')
+        
+        texture = DepthTexture.create_for_size(self.width, self.height)
+        glBindTexture(GL_TEXTURE_2D, texture)
+        glReadBuffer(self.gl_buffer)
+        glCopyTexImage2D(GL_TEXTURE_2D, 0,
+                         GL_DEPTH_COMPONENT,
+                         self.x, self.y, self.width, self.height,
+                         0)
+        return texture
+
+    texture = property(get_texture)
+
+    def blit_to_depth_texture(self, target, level, x, y, z):
+        glReadBuffer(self.gl_buffer)
+        glCopyTexSubImage2D(target, level,
+                            x, y,
+                            self.x, self.y, self.width, self.height)
+
 
 class BufferImageMask(BufferImage):
     gl_format = GL_STENCIL_INDEX

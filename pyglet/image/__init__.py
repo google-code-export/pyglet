@@ -824,10 +824,16 @@ class TextureRegion(Texture):
     def get_region(self, x, y, width, height):
         me_x = self.tex_coords[0][0] * self.owner.width
         me_y = self.tex_coords[0][1] * self.owner.height
-        region = super(TextureRegion, self).get_region(
-            me_x + x, me_y + y, width, height)
-        region.owner = self.owner
-        return region
+        u1 = x / float(self.owner.width)
+        v1 = y / float(self.owner.height)
+        u2 = (x + width) / float(self.owner.width)
+        v2 = (y + height) / float(self.owner.height)
+        z1 = self.tex_coords[0][2]
+        z2 = self.tex_coords[1][2]
+        z3 = self.tex_coords[2][2]
+        z4 = self.tex_coords[3][2]
+        return self.region_class(width, height, self.owner,
+            ((u1, v1, z1), (u2, v1, z2), (u2, v2, z3), (u1, v2, z4))) 
 
     def blit(self, source, x, y, z):
         me_x = int(self.tex_coords[0][0] * self.owner.width)

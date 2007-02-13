@@ -151,16 +151,34 @@ class GLRenderDevice(RenderDevice):
         background_image = compute('background-image')
         if background_image != 'none':
             repeat = compute('background-repeat')
+            # TODO tileable texture in cache vs non-tileable, vice-versa
             if background_image not in self.texture_cache:
                 self.texture_cache[background_image] = None
                 stream = self.locator.get_stream(background_image)
                 if stream:
-                    texture = Image.load(file=stream).texture()
+                    image = load_image('', file=stream)
                     if repeat != 'no-repeat':
-                        texture.stretch()
+                        texture = TileableTexture.create_from_image(image)
+                    else:
+                        texture = image.texture
                     self.texture_cache[background_image] = texture
             texture = self.texture_cache[background_image]
             if texture:
+                glPushAttrib(GL_ENABLE_BIT | GL_CURRENT_BIT)
+                glColor3f(1, 1, 1)
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                if isinstance(texture, TileableTexture):
+                    width, height = texture.width, texture.height
+                    if repeat in ('repeat', 'repeat-x'):
+                        width = x2 - x1
+                    if repeat in ('repeat', 'repeat-y'):
+                        height = y1 - y2
+                    texture.blit_tiled_to_buffer(x1, y2, 0, width, height)
+                else:
+                    texture.blit_to_buffer(x1, y2, 0)
+                glPopAttrib()
+                '''
                 u1, v1 = 0,0
                 u2, v2 = texture.uv
                 width, height = texture.width, texture.height
@@ -195,6 +213,7 @@ class GLRenderDevice(RenderDevice):
                 glDrawArrays(GL_QUADS, 0, 4)
                 glPopAttrib()
                 glPopClientAttrib()
+                '''
                     
    
 class GLTextFrame(TextFrame):

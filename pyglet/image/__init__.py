@@ -551,7 +551,7 @@ class ImageData(AbstractImage):
         elif len(format) == 3:
             return GL_RGB
         elif len(format) == 2:
-            return GL_LUMINANCE
+            return GL_LUMINANCE_ALPHA
         elif format == 'A':
             return GL_ALPHA
         elif format == 'L':
@@ -1020,10 +1020,13 @@ class BufferImage(AbstractImage):
             y += self.owner.y
 
         glReadBuffer(self.gl_buffer)
+        glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
         glReadPixels(x, y, self.width, self.height, 
                      self.gl_format, GL_UNSIGNED_BYTE, buffer)
+        glPopClientAttrib()
 
-        return ImageData(width, height, format, buffer)
+        return ImageData(self.width, self.height, self.format, buffer)
 
     image_data = property(get_image_data)
 

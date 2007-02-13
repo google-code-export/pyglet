@@ -23,6 +23,7 @@ class TestLoad(ImageRegressionTestCase):
     show_checkerboard = True
     alpha = True
     has_exit = False
+    decoder = None
 
     def on_resize(self, width, height):
         glMatrixMode(GL_PROJECTION)
@@ -63,23 +64,9 @@ class TestLoad(ImageRegressionTestCase):
         if self.capture_regression_image():
             self.has_exit = True
 
-    def setUp(self):
-        self.__encoder_state = get_encoders_state()
-        self.__decoder_state = get_decoders_state()
-
-    def choose_codecs(self):
-        clear_encoders()
-        clear_decoders()
-        add_default_image_codecs()
-
-    def tearDown(self):
-        set_encoders_state(self.__encoder_state)
-        set_decoders_state(self.__decoder_state)
-
     def test_load(self):
         width, height = 800, 600
         self.window = w = Window(width, height, visible=False)
-        self.choose_codecs()
         w.push_handlers(self)
 
         self.screen = get_buffer_manager().get_color_buffer()
@@ -87,7 +74,8 @@ class TestLoad(ImageRegressionTestCase):
 
         if self.texture_file:
             self.texture_file = join(dirname(__file__), self.texture_file)
-            self.texture = load_image(self.texture_file).texture 
+            self.texture = load_image(self.texture_file, 
+                                      decoder=self.decoder).texture 
 
         if self.alpha:
             glEnable(GL_BLEND)

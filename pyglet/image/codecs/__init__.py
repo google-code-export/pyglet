@@ -107,27 +107,6 @@ def add_encoders(module):
             if extension not in _encoder_extensions:
                 _encoder_extensions[extension] = []
             _encoder_extensions[extension].append(encoder)
-
-# these functions are used to support unit testing turning off stuff
-def get_encoders_state():
-    return _encoders, _encoder_extensions
-def get_decoders_state():
-    return _decoders, _decoder_extensions
-def set_encoders_state(state):
-    global _encoders, _encoder_extensions
-    _encoders, _encoder_extensions = state
-def set_decoders_state(state):
-    global _decoders, _decoder_extensions
-    _decoders, _decoder_extensions = state
-def clear_decoders():
-    global _decoders, _decoder_extensions
-    _decoders = []
-    _decoder_extensions = {}
-def clear_encoders():
-    global _encoders, _encoder_extensions
-    _encoders = []
-    _encoder_extensions = {}
-
  
 def add_default_image_codecs():
     # Add the codecs we know about.  These should be listed in order of

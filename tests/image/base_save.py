@@ -26,6 +26,7 @@ class TestSave(ImageRegressionTestCase):
     show_checkerboard = True
     alpha = True
     has_exit = False
+    encodedr = None
 
     def on_resize(self, width, height):
         glMatrixMode(GL_PROJECTION)
@@ -84,7 +85,8 @@ class TestSave(ImageRegressionTestCase):
             self.original_texture = load_image(self.texture_file).texture
 
             file = StringIO()
-            self.original_texture.save(self.texture_file, file)
+            self.original_texture.save(self.texture_file, file,
+                                       encoder=self.encoder)
             file.seek(0)
             self.saved_texture = load_image(self.texture_file, file).texture
 
@@ -92,15 +94,9 @@ class TestSave(ImageRegressionTestCase):
         width, height = 800, 600
         return Window(width, height, visible=False)
 
-    def choose_codecs(self):
-        clear_encoders()
-        clear_decoders()
-        add_default_image_codecs()
-
     def test_save(self):
         self.window = w = self.create_window()
         w.push_handlers(self)
-        self.choose_codecs()
 
         self.screen = get_buffer_manager().get_color_buffer()
         self.checkerboard = create_image(32, 32, CheckerImagePattern())

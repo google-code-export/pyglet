@@ -55,7 +55,7 @@ class TestSave(ImageRegressionTestCase):
                      self.window.height/float(self.checkerboard.height),
                      1.)
             glMatrixMode(GL_MODELVIEW)
-            self.checkerboard.draw()
+            self.screen.blit(self.checkerboard, 0, 0, 0)
             glMatrixMode(GL_TEXTURE)
             glPopMatrix()
             glMatrixMode(GL_MODELVIEW)
@@ -66,35 +66,27 @@ class TestSave(ImageRegressionTestCase):
             
     def draw_original(self):
         if self.original_texture:
-            glPushMatrix()
-            glTranslatef(
+            self.screen.blit(self.original_texture, 
                 self.window.width / 4 - self.original_texture.width / 2,
-                (self.window.height - self.original_texture.height) / 2, 0)
-            self.original_texture.draw()
-            glPopMatrix()
+                (self.window.height - self.original_texture.height) / 2, 
+                0)
 
     def draw_saved(self):
         if self.saved_texture:
-            glPushMatrix()
-            glTranslatef(
+            self.screen.blit(self.saved_texture,
                 self.window.width * 3 / 4 - self.saved_texture.width / 2,
-                (self.window.height - self.saved_texture.height) / 2, 0)
-            self.saved_texture.draw()
-            glPopMatrix()
+                (self.window.height - self.saved_texture.height) / 2, 
+                0)
 
     def load_texture(self):
         if self.texture_file:
             self.texture_file = join(dirname(__file__), self.texture_file)
-            self.original_texture = \
-                Image.load(self.texture_file).texture()
+            self.original_texture = load_image(self.texture_file).texture
 
             file = StringIO()
             self.original_texture.save(self.texture_file, file)
             file.seek(0)
-            self.saved_texture = \
-                Image2d.load(self.texture_file, file)
-
-            self.original_texture = Image2d.from_texture(self.original_texture)
+            self.saved_texture = load_image(self.texture_file, file).texture
 
     def create_window(self):
         width, height = 800, 600
@@ -110,8 +102,8 @@ class TestSave(ImageRegressionTestCase):
         w.push_handlers(self)
         self.choose_codecs()
 
-        self.checkerboard = \
-            Image2d.from_image(Image.create_checkerboard(32))
+        self.screen = get_buffer_manager().get_color_buffer()
+        self.checkerboard = create_image(32, 32, CheckerImagePattern())
 
         self.load_texture()
 

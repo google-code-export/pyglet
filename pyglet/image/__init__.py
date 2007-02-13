@@ -165,7 +165,7 @@ class AbstractImage(object):
             first_exception = None
             for encoder in get_encoders(filename):
                 try:
-                    encoder.encode(self, file, filename, options)
+                    encoder.encode(self, file, filename)
                     return
                 except ImageDecodeException, e:
                     first_exception = first_exception or e
@@ -434,6 +434,8 @@ class ImageData(AbstractImage):
         self._current_data = ''.join(rows)
         self._current_pitch = width * len(self._current_format)
         self._current_texture = None
+        self.width = width
+        self.height = height
 
     def _convert(self, format, pitch):
         '''Return data in the desired format; does not alter this instance's
@@ -456,7 +458,7 @@ class ImageData(AbstractImage):
             elif diff < 0:
                 # New pitch is longer than old pitch, add '0' bytes to each row
                 pattern = re.compile(
-                    '(%s)' % '.' * abs(self._current_pitch), re.DOTALL)
+                    '(%s)' % ('.' * abs(self._current_pitch)), re.DOTALL)
                 pad = '.' * -diff
                 data = pattern.sub(r'\1%s' % pad, data)
 
@@ -752,8 +754,12 @@ class Texture(AbstractImage):
         format = 'RGBA'
         gl_format = GL_RGBA
 
+        glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
+        glPixelStorei(GL_PACK_ALIGNMENT, 1)
         buffer = (GLubyte * (self.width * self.height * len(format)))()
-        glGetTexImage(GL_TEXTURE_2D, 0, gl_format, GL_UNSIGNED_BYTE, buffer)
+        glGetTexImage(self.target, self.level, 
+                      gl_format, GL_UNSIGNED_BYTE, buffer)
+        glPopClientAttrib()
 
         return ImageData(self.width, self.height, format, buffer)
 
@@ -815,11 +821,13 @@ class TextureRegion(Texture):
         self.tex_coords = tex_coords
 
     def get_image_data(self):
-        me_x = self.tex_coords[0][0] * self.owner.width
-        me_y = self.tex_coords[0][1] * self.owner.height
-        image_data = super(TextureRegion, self).get_image_data()
+        me_x = int(self.tex_coords[0][0] * self.owner.width)
+        me_y = int(self.tex_coords[0][1] * self.owner.height)
+        image_data = self.owner.get_image_data()
         image_data.crop(me_x, me_y, self.width, self.height)
         return image_data
+
+    image_data = property(get_image_data)
 
     def get_region(self, x, y, width, height):
         me_x = self.tex_coords[0][0] * self.owner.width

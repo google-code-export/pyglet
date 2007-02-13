@@ -230,12 +230,14 @@ class BaseFont(object):
             if image.width > self.texture_width or \
                image.height > self.texture_height:
                 texture = self.texture_class.create_for_size(GL_TEXTURE_2D,
-                    image.width * 2, image.height * 2, GL_ALPHA)
+                    image.width * 2, image.height * 2,
+                    self.texture_internalformat)
                 self.texture_width = texture.width
                 self.texture_height = texture.height
             else:
                 texture = self.texture_class.create_for_size(GL_TEXTURE_2D,
-                    self.texture_width, self.texture_height, GL_ALPHA)
+                    self.texture_width, self.texture_height,
+                    self.texture_internalformat)
             self.textures.insert(0, texture)
             glyph = texture.fit(image)
         return glyph

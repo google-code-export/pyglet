@@ -522,6 +522,14 @@ class ImageData(AbstractImage):
             return GL_LUMINANCE, GL_UNSIGNED_BYTE
         elif format == 'LA':
             return GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE
+        elif format == 'R':
+            return GL_RED, GL_UNSIGNED_BYTE
+        elif format == 'G':
+            return GL_GREEN, GL_UNSIGNED_BYTE
+        elif format == 'B':
+            return GL_BLUE, GL_UNSIGNED_BYTE
+        elif format == 'A':
+            return GL_ALPHA, GL_UNSIGNED_BYTE
         elif format == 'RGB':
             return GL_RGB, GL_UNSIGNED_BYTE
         elif format == 'RGBA':
@@ -733,7 +741,7 @@ class Texture(AbstractImage):
             glBindTexture(GL_TEXTURE_2D, id.value)
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
             glTexImage2D(GL_TEXTURE_2D, 0,
-                         GL_RGBA,
+                         internalformat,
                          width, height,
                          0,
                          GL_RGBA, GL_UNSIGNED_BYTE,

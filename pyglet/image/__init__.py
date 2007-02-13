@@ -209,7 +209,7 @@ class ImageData(AbstractImage):
     _current_texture = None
     _current_mipmap_texture = None
 
-    def __init__(self, width, height, format, data, pitch=None):
+    def __init__(self, width, height, format, data, pitch=None, skip_rows=0):
         '''Initialise image data.
 
         width, height
@@ -222,21 +222,25 @@ class ImageData(AbstractImage):
             If specified, the number of bytes per row.  Negative values
             indicate a top-to-bottom arrangement.  
             Defaults to width * len(format).
+        skip_rows
+            Skip a number of rows in `data` before the image begins.
 
         '''
         super(ImageData, self).__init__(width, height)
 
-        self._current_format = self._desired_format = format
+        self._current_format = self._desired_format = format.upper()
         self._current_data = data
         if not pitch:
             pitch = width * len(format)
         self._current_pitch = self.pitch = pitch
         self.mipmap_images = []
+        self._current_skip_rows = skip_rows
+
 
     image_data = property(lambda self: self)
 
     def set_format(self, format):
-        self._desired_format = format
+        self._desired_format = format.upper()
         self._current_texture = None
 
     format = property(lambda self: self._desired_format, set_format)
@@ -248,12 +252,14 @@ class ImageData(AbstractImage):
             self._current_format = self.format
             self._current_pitch = self.pitch
 
+        self._ensure_string_data()
         return self._current_data
 
     def set_data(self, data):
         self._current_data = data
         self._current_format = self.format
         self._current_pitch = self.pitch
+        self._current_skip_rows = 0
         self._current_texture = None
         self._current_mipmapped_texture = None
 
@@ -404,6 +410,7 @@ class ImageData(AbstractImage):
         glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT)
         glPixelStorei(GL_UNPACK_ALIGNMENT, alignment)
         glPixelStorei(GL_UNPACK_ROW_LENGTH, row_length)
+        glPixelStorei(GL_UNPACK_SKIP_ROWS, self._current_skip_rows)
 
         if internalformat:
             glTexImage2D(GL_TEXTURE_2D, level,
@@ -496,14 +503,17 @@ class ImageData(AbstractImage):
             else:
                 # Rows are tightly packed, apply regex over whole image.
                 data = swap_pattern.sub(repl, data)
-
         return data
 
     def _ensure_string_data(self):
         if type(self._current_data) is not str:
             buf = create_string_buffer(len(self._current_data))
-            memmove(buf, self.data, len(self._current_data))
+            memmove(buf, self._current_data, len(self._current_data))
             self._current_data = buf.raw
+            if self._current_skip_rows:
+                self._current_data = \
+                    self._current_data[self._current_pitch*skip_rows:]
+                self._current_skip_rows = 0
 
     def _get_gl_format_and_type(self, format):
         if format == 'I':
@@ -685,6 +695,7 @@ class Texture(AbstractImage):
     member of any other AbstractImage.
     '''
 
+    region_class = None # Set to TextureRegion after it's defined
     tex_coords = ((0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0))
     level = 0
 
@@ -694,66 +705,54 @@ class Texture(AbstractImage):
         self.id = id
 
     def __del__(self):
-        id = GLuint(self.id)
-        glDeleteTextures(1, byref(id))
+        # TODO
+        #id = GLuint(self.id)
+        #glDeleteTextures(1, byref(id))
+        pass
 
     @classmethod
-    def create_for_size(cls, target, min_width, min_height):
+    def create_for_size(cls, target, min_width, min_height,
+                        internalformat=None):
         '''Create a Texture with dimensions at least min_width, min_height.
 
         Many older drivers require that each dimension is a power of 2;
         this constructor ensures that the smallest powers of 2 above the
         minimum dimensions specified are used.
+
+        If internalformat is specifed, the texture will also be initialised
+        with a zero'd image, otherwise it is simply an unbound texture object.
         '''
         if target not in (GL_TEXTURE_RECTANGLE_NV, GL_TEXTURE_RECTANGLE_ARB):
             width = _nearest_pow2(min_width)
             height = _nearest_pow2(min_height)
         id = GLuint()
         glGenTextures(1, byref(id))
+
+        if internalformat is not None:
+            blank = (GLubyte * (width * height * 4))()
+            glBindTexture(GL_TEXTURE_2D, id.value)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexImage2D(GL_TEXTURE_2D, 0,
+                         GL_RGBA,
+                         width, height,
+                         0,
+                         GL_RGBA, GL_UNSIGNED_BYTE,
+                         blank)
+                         
         return cls(width, height, target, id.value)
 
     def get_image_data(self):
         glBindTexture(self.target, self.id)
 
-        # Determine a suitable format string (could also use internalformat,
-        # but this is easier).
-        def param(p):
-            value = GLint()
-            glGetTexLevelParameteriv(self.target, 0, p, byref(value))
-            return value.value
-        format = ''
-        if param(GL_TEXTURE_RED_SIZE):
-            format += 'R'
-        if param(GL_TEXTURE_GREEN_SIZE):
-            format += 'G'
-        if param(GL_TEXTURE_BLUE_SIZE):
-            format += 'B'
-        if param(GL_TEXTURE_LUMINANCE_SIZE):
-            format += 'L'
-        if param(GL_TEXTURE_INTENSITY_SIZE):
-            format += 'I'
-        if param(GL_TEXTURE_ALPHA_SIZE):
-            format += 'A'
+        # Always extract complete RGBA data.  Could check internalformat
+        # to only extract used channels. XXX
+        format = 'RGBA'
+        gl_format = GL_RGBA
 
-        # Determine GL format for extraction.
-        gl_format = {
-            'R': GL_RED,
-            'G': GL_BLUE,
-            'B': GL_GREEN,
-            'A': GL_ALPHA,
-            'RGB': GL_RGB,
-            'RGBA': GL_RGBA,
-            'L': GL_LUMINANCE,
-            'LA': GL_LUMINANCE_ALPHA,
-            'I': GL_LUMINANCE
-        }.get(format, None)
-        if not gl_format:
-            raise ImageException('Invalid texture format "%s"' % format)
-
-        buffer = (GLubyte * (width * height * len(format)))()
+        buffer = (GLubyte * (self.width * self.height * len(format)))()
         glGetTexImage(GL_TEXTURE_2D, 0, gl_format, GL_UNSIGNED_BYTE, buffer)
 
-        return ImageData(width, height, format, buffer)
+        return ImageData(self.width, self.height, format, buffer)
 
     image_data = property(get_image_data)
 
@@ -782,6 +781,7 @@ class Texture(AbstractImage):
         glPushAttrib(GL_ENABLE_BIT)
         glEnable(self.target)
         glBindTexture(self.target, self.id)
+        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE)
         glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT)
         glInterleavedArrays(GL_T4F_V4F, 0, array)
         glDrawArrays(GL_QUADS, 0, 4)
@@ -797,7 +797,7 @@ class Texture(AbstractImage):
         z2 = self.tex_coords[1][2]
         z3 = self.tex_coords[2][2]
         z4 = self.tex_coords[3][2]
-        return TextureRegion(width, height, self,
+        return self.region_class(width, height, self,
             ((u1, v1, z1), (u2, v1, z2), (u2, v2, z3), (u1, v2, z4)))
 
 class TextureRegion(Texture):
@@ -826,6 +826,13 @@ class TextureRegion(Texture):
             me_x + x, me_y + y, width, height)
         region.owner = self.owner
         return region
+
+    def blit(self, source, x, y, z):
+        me_x = int(self.tex_coords[0][0] * self.owner.width)
+        me_y = int(self.tex_coords[0][1] * self.owner.height)
+        self.owner.blit(source, x + me_x, y + me_y, z)
+
+Texture.region_class = TextureRegion
 
 class DepthTexture(Texture):
     def blit(self, source, x, y, z):
@@ -952,7 +959,8 @@ class ColorBufferImage(BufferImage):
     format = 'RGBA'
 
     def get_texture(self):
-        texture = Texture.create_for_size(self.width, self.height)
+        texture = Texture.create_for_size(GL_TEXTURE_2D, 
+            self.width, self.height)
         glBindTexture(GL_TEXTURE_2D, texture.id)
 
         if texture.width != self.width or texture.height != self.height:
@@ -997,7 +1005,8 @@ class DepthBufferImage(BufferImage):
             raise ImageException(
                 'Depth texture requires that buffer dimensions be powers of 2')
         
-        texture = DepthTexture.create_for_size(self.width, self.height)
+        texture = DepthTexture.create_for_size(GL_TEXTURE_2D,
+            self.width, self.height)
         glBindTexture(GL_TEXTURE_2D, texture)
         glReadBuffer(self.gl_buffer)
         glCopyTexImage2D(GL_TEXTURE_2D, 0,
@@ -1021,29 +1030,15 @@ class BufferImageMask(BufferImage):
 
     # TODO mask methods
 
-class AllocatingTextureAtlasOutOfSpaceException(ImageException):
-    pass
+class TextureSequence(object):
+    def __init__(self, texture):
+        self.texture = texture
 
-class AllocatingTextureAtlas(Texture):
-    x = 0
-    y = 0
-    line_height = 0
-    subimage_class = TextureRegion
+    def __getitem__(self, slice):
+        raise ImageException('Cannot getitem from %r' % self)
 
-    def allocate(self, width, height):
-        '''Returns (x, y) position for a new glyph, and reserves that
-        space.'''
-        if self.x + width > self.width:
-            self.x = 0
-            self.y += self.line_height
-            self.line_height = 0
-        if self.y + height > self.height:
-            raise AllocatingTextureAtlasOutOfSpaceException()
-
-        self.line_height = max(self.line_height, height)
-        x = self.x
-        self.x += width
-        return self.subimage_class(self, x, self.y, width, height)
+    def __setitem__(self, slice, image):
+        raise ImageException('Cannot setitem on %r' % self)
 
 
 # Initialise default codecs

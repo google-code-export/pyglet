@@ -143,12 +143,6 @@ class AbstractImage(object):
 
     mipmapped_texture = property(get_mipmapped_texture)
 
-    def get_tileable_texture(self):
-        '''Retrieve a TileableTexture instance for this image.'''
-        raise ImageException('Cannot retrieve tileable texture for %r' % self)
-
-    tileable_texture = property(get_tileable_texture)
-
     def save(self, filename=None, file=None, encoder=None):
         '''Save this image to a file.
 
@@ -293,11 +287,8 @@ class ImageData(AbstractImage):
         self.mipmap_images += [None] * (level - len(self.mipmap_images))
         self.mipmap_images[level - 1] = data
 
-    def get_texture(self):
-        if self._current_texture:
-            return self._current_texture
-
-        texture = Texture.create_for_size(
+    def create_texture(self, cls):
+        texture = cls.create_for_size(
             GL_TEXTURE_2D, self.width, self.height)
         subimage = False
         if texture.width != self.width or texture.height != self.height:
@@ -324,8 +315,12 @@ class ImageData(AbstractImage):
 
         self.blit_to_texture(GL_TEXTURE_2D, 0, 0, 0, 0, internalformat)
         
-        self._current_texture = texture
-        return texture
+        return texture 
+
+    def get_texture(self):
+        if not self._current_texture:
+            self._current_texture = self.create_texture(Texture)
+        return self._current_texture
 
     texture = property(get_texture)
 
@@ -789,7 +784,6 @@ class Texture(AbstractImage):
         glPushAttrib(GL_ENABLE_BIT)
         glEnable(self.target)
         glBindTexture(self.target, self.id)
-        glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE)
         glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT)
         glInterleavedArrays(GL_T4F_V4F, 0, array)
         glDrawArrays(GL_QUADS, 0, 4)
@@ -841,6 +835,71 @@ class TextureRegion(Texture):
         self.owner.blit(source, x + me_x, y + me_y, z)
 
 Texture.region_class = TextureRegion
+
+class TileableTexture(Texture):
+    '''A texture that can be tiled efficiently.
+    '''
+    def __init__(self, width, height, target, id):
+        if not _is_pow2(width) or not _is_pow2(height):
+            raise ImageException(
+                'TileableTexture requires dimensions that are powers of 2')
+        super(TileableTexture, self).__init__(width, height, target, id)
+        
+    def get_region(self, x, y, width, height):
+        raise ImageException('Cannot get region of %r' % self)
+
+    def blit_tiled_to_buffer(self, x, y, z, width, height):
+        u1 = v1 = 0
+        u2 = width / float(self.width)
+        v2 = height / float(self.height)
+        w, h = width, height
+        t = self.tex_coords
+        array = (GLfloat * 32)(
+             u1,      v1,      t[0][2], 1.,
+             x,       y,       z,       1.,
+             u2,      v1,      t[1][2], 1., 
+             x + w,   y,       z,       1.,
+             u2,      v2,      t[2][2], 1., 
+             x + w,   y + h,   z,       1.,
+             u1,      v2,      t[3][2], 1., 
+             x,       y + h,   z,       1.)
+
+        glPushAttrib(GL_ENABLE_BIT)
+        glEnable(self.target)
+        glBindTexture(self.target, self.id)
+        glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT)
+        glInterleavedArrays(GL_T4F_V4F, 0, array)
+        glDrawArrays(GL_QUADS, 0, 4)
+        glPopClientAttrib()
+        glPopAttrib()
+        
+
+    @classmethod
+    def create_from_image(cls, image):
+        print image.width, image.height, image.format
+        if not _is_pow2(image.width) or not _is_pow2(image.height):
+            # Potentially unnecessary conversion if a GL format exists.
+            print 'gluScale'
+            image = image.image_data
+            image.format = 'RGBA'
+            image.pitch = image.width * len(image.format)
+            texture_width = _nearest_pow2(image.width)
+            texture_height = _nearest_pow2(image.height)
+            newdata = c_buffer(texture_width * texture_height *
+                               len(image.format))
+            gluScaleImage(GL_RGBA,
+                          image.width, image.height,
+                          GL_UNSIGNED_BYTE,
+                          image.data,
+                          texture_width,
+                          texture_height,
+                          GL_UNSIGNED_BYTE,
+                          newdata)
+            image = ImageData(texture_width, texture_height, image.format,
+                              newdata)
+
+        image = image.image_data
+        return image.create_texture(cls)
 
 class DepthTexture(Texture):
     def blit(self, source, x, y, z):
@@ -1052,96 +1111,3 @@ class TextureSequence(object):
 # Initialise default codecs
 from pyglet.image.codecs import *
 add_default_image_codecs()
-
-
-"""
-# code to stretch texture
-    def stretch(self):
-        '''Make this image stretch to fill its entire texture dimensions,
-        leaving no border.
-        
-        The width, height of the texture are unchanged. Required for tiling
-        non-power-2 images.
-
-        If the power-2 size of the texture is larger than the window size,
-        part of the texture may be lost as OpenGL silently restricts the
-        viewport size.  If this is a problem, avoid this function and create
-        your images of power-2 size to start with.
-        '''
-        tex_width, tex_height, u, v = \
-            Texture.get_texture_size(self.width, self.height)
-        if tex_width == self.width and tex_height == self.height:
-            return
-
-        # Interleaved array for quad filling normalized device coords.
-            # u v     x y z
-        ar = [0, 0,   -1, -1, 0,
-              u, 0,    1, -1, 0,
-              u, v,    1,  1, 0,
-              0, v,   -1,  1, 0]
-        ar = (c_float * len(ar))(*ar)
-
-        #buffer = allocate_aux_buffer()
-        aux_buffers = c_int()
-        glGetIntegerv(GL_AUX_BUFFERS, byref(aux_buffers))
-        if aux_buffers.value < 1:
-            warnings.warn('No aux buffer available.  Request one in window \
-                creation to avoid destroying the color buffer during \
-                texture operations.')
-            buffer = GL_BACK
-        else:
-            buffer = GL_AUX0
-
-        alpha_bits = c_int()
-        glGetIntegerv(GL_ALPHA_BITS, byref(alpha_bits))
-        if alpha_bits.value == 0:
-            warnings.warn('No alpha channel in color/aux buffer.  Request \
-                alpha_size=8 in window creation to avoid losing the alpha \
-                channel of textures during texture operations.')
-
-        glDrawBuffer(buffer)
-
-        old_clear_color = (c_float * 4)()
-        glGetFloatv(GL_COLOR_CLEAR_VALUE, old_clear_color)
-        glClearColor(0, 0, 0, 0)
-        glClear(GL_COLOR_BUFFER_BIT)
-        old_viewport = (c_int * 4)()
-        glGetIntegerv(GL_VIEWPORT, old_viewport)
-        glViewport(0, 0, tex_width, tex_height)
-        glBindTexture(GL_TEXTURE_2D, self.id)
-
-        # Ya know, this would be indented properly if it wasn't Python ;-)
-        glPushClientAttrib(GL_CLIENT_VERTEX_ARRAY_BIT)
-        glPushAttrib(GL_CURRENT_BIT | GL_ENABLE_BIT)
-        glEnable(GL_TEXTURE_2D)
-        glDisable(GL_DEPTH_TEST)
-        glColor3f(1, 1, 1)
-        glMatrixMode(GL_PROJECTION)
-        glPushMatrix()
-        glLoadIdentity()
-        glMatrixMode(GL_MODELVIEW)
-        glPushMatrix()
-        glLoadIdentity()
-        glInterleavedArrays(GL_T2F_V3F, 0, ar)
-        glDrawArrays(GL_QUADS, 0, 4)
-        glPopMatrix()
-        glMatrixMode(GL_PROJECTION)
-        glPopMatrix()
-        glMatrixMode(GL_MODELVIEW)
-        glPopAttrib()
-        glPopClientAttrib()
-
-        glReadBuffer(buffer)
-        glCopyTexSubImage2D(GL_TEXTURE_2D,
-            0,
-            0, 0,
-            0, 0,
-            tex_width, tex_height)
-
-        glViewport(*old_viewport)
-        glClearColor(*old_clear_color)
-        self.uv = (1.,1.)
-
-        glDrawBuffer(GL_BACK)
-
-"""

@@ -1,6 +1,95 @@
 #!/usr/bin/env python
 
-'''
+'''Image loading and high-level texture functions.
+
+Only basic functionality is described here; for full reference see the
+accompanying documentation.
+
+To load an image::
+
+    from pyglet.image import *
+    image = load_image('picture.png')
+
+The supported image file types include PNG, BMP, GIF, JPG, and many more,
+somewhat depending on the operating system.  To load an image from a file-like
+object instead of a filename::
+
+    image = load_image('hint.jpg', file=fileobj)
+
+The hint helps the module locate an appropriate decoder to use based on the
+file extension.  It is optional.
+
+Once loaded, images can be used directly by most other modules of pyglet (for
+example, pyglet.scene2d).  All images have a width and height you can access::
+
+    width, height = image.width, image.height
+
+You can extract a region of an image (this keeps the original image intact;
+the memory is shared efficiently)::
+
+    subimage = image.get_region(x, y, width, height)
+
+Remember that y-coordinates are always increasing upwards.
+
+Drawing images
+--------------
+
+To draw an image at some point on the screen::
+
+    image.blit_to_buffer(x, y, z)
+
+This assumes an appropriate view transform and projection have been applied.
+
+Texture access
+--------------
+
+If you are using OpenGL directly, you can access the image as a texture::
+
+    texture = image.texture
+
+(This is the most efficient way to obtain a texture; some images are
+immediately loaded as textures, whereas others go through an intermediate
+form).  To use a texture with pyglet.gl::
+
+    from pyglet.gl import *
+    glEnable(texture.target)        # typically target is GL_TEXTURE_2D
+    glBindTexture(texture.target, texture.id)
+    # ... draw with the texture
+
+Pixel access
+------------
+
+To access raw pixel data of an image::
+
+    rawimage = image.image_data
+
+(If the image has just been loaded this will be a very quick operation;
+however if the image is a texture a relatively expensive readback operation
+will occur).  The pixels can be accessed as a string::
+
+    pixels = rawimage.data
+
+You determine the format of these pixels by examining rawimage.pitch,
+rawimage.format.  The "pitch" of an image is the number of bytes in a row
+(this may validly be more than the number required to make up the width of the
+image, it is common to see this for word alignment).  If "pitch" is negative
+the rows of the image are ordered from top to bottom, otherwise they are
+ordedred from bottom to top.
+
+"format" strings consist of characters that give the byte
+order of each color component.  For example, if rawimage.format is 'RGBA',
+there are four color components: red, green, blue and alpha, in that order.
+Other common format strings are 'RGB', 'LA' (luminance, alpha) and 'I'
+(intensity).
+
+You can also set the format and pitch of an image.  This affects how "data"
+will be presented the next time it is read or written to::
+
+    # Read the alpha channel only, with rows tightly packed from bottom-to-top.
+    rawimage.format = 'A'
+    rawimage.pitch = rawimage.width
+    data = rawimage.data
+
 '''
 
 __docformat__ = 'restructuredtext'
@@ -25,18 +114,22 @@ class ImageException(Exception):
 def load_image(filename, file=None, decoder=None):
     '''Load an image from a file.
 
-    `filename` is used to guess the image format.  
+    :note: You can make no assumptions about the return type; usually it will
+    be ImageData or CompressedImageData, but decoders are free to return any
+    subclass of AbstractImage.
 
-    `file` is a an optional file-like object.  If unspecified, the `filename`
-    is opened.
-        
-    `decoder` is optional and specifies an instance of ImageDecoder.  If
-    `decoder` is unspecified, all decoders that are registered for the
-    filename extension are tried.  If none succeed, the exception from the
-    first decoder is raised.
+    :Parameters:
+        `filename` : str
+            Used to guess the image format, and to load the file if `file` is
+            unspecified.
+        `file` : file-like object or None
+            Source of image data in any supported format.        
+        `decoder` : ImageDecoder or None
+            If unspecified, all decoders that are registered for the filename
+            extension are tried.  If none succeed, the exception from the
+            first decoder is raised.
 
-    Returns an instance of AbstractImage (you can make no assumptions about
-    the particular subclass; this depends on the decoder).
+    :rtype: AbstractImage
     '''
 
     if not file:
@@ -61,29 +154,53 @@ def load_image(filename, file=None, decoder=None):
         raise first_exception 
 
 def create_image(width, height, pattern=None):
-    '''Create an image filled with the given pattern.
+    '''Create an image optionally filled with the given pattern.
 
-    If no pattern is specified, the image is completely transparent.
-    Otherwise, `pattern` is an instance of ImagePattern.
+    :note: You can make no assumptions about the return type; usually it will
+    be ImageData or CompressedImageData, but patterns are free to return any
+    subclass of AbstractImage.
 
-    Returns an instance of AbstractImage (you can make no assumptions about
-    the particular subclass; this depends on the pattern).
+    :Parameters:
+        `width` : int
+            Width of image to create
+        `height` : int
+            Height of image to create
+        `pattern` : ImagePattern or None
+            Pattern to fill image with.  If unspecified, the image will
+            intially be transparent.
+
+    :rtype: AbstractImage
     '''
     if not pattern:
         pattern = SolidColorImagePattern()
     return pattern.create_image(width, height)
 
 class ImagePattern(object):
+    '''Abstract image creation class.'''
     def create_image(width, height):
+        '''Create an image of the given size.
+
+        :Parameters:
+            `width` : int
+                Width of image to create
+            `height` : int
+                Height of image to create
+        
+        :rtype: AbstractImage
+        '''
         raise NotImplementedError('abstract')
 
 class SolidColorImagePattern(ImagePattern):
     '''Creates an image filled with a solid color.'''
 
     def __init__(self, color=(0, 0, 0, 0)):
-        '''Initialise with the given color.
+        '''Create a solid image pattern with the given color.
 
-        'color' must be a 4-tuple of ints in range [0,255].
+        :Parameters:
+            `color` : (int, int, int, int)
+                4-tuple of ints in range [0,255] giving RGBA components of
+                color to fill with.
+
         '''
         self.color = '%c%c%c%c' % color
 
@@ -92,19 +209,22 @@ class SolidColorImagePattern(ImagePattern):
         return ImageData(width, height, 'RGBA', data)
 
 class CheckerImagePattern(ImagePattern):
-    '''Creates an image with the pattern::
-
-        1122
-        2211
-
-    Where "1" is color1 and "2" is color2.  When tiled, the pattern creates
-    a checkerboard appearance.
+    '''Create an image with a tileable checker image.
     ''' 
 
     def __init__(self, color1=(150,150,150,255), color2=(200,200,200,255)):
         '''Initialise with the given colors.
 
-        'color1' and 'color2' must be 4-tuples of ints in range [0,255].
+        :Parameters:
+            `color1` : (int, int, int, int)
+                4-tuple of ints in range [0,255] giving RGBA components of
+                color to fill with.  This color appears in the top-left and
+                bottom-right corners of the image.
+            `color2` : (int, int, int, int)
+                4-tuple of ints in range [0,255] giving RGBA components of
+                color to fill with.  This color appears in the top-right and
+                bottom-left corners of the image.
+
         '''
         self.color1 = '%c%c%c%c' % color1
         self.color2 = '%c%c%c%c' % color2
@@ -119,6 +239,23 @@ class CheckerImagePattern(ImagePattern):
 
 class AbstractImage(object):
     '''Abstract class representing an image.
+
+    :Ivariables:
+        `width` : int
+            Width of image
+        `height` : int
+            Height of image
+        `image_data` : ImageData
+            An ImageData view of this image.  Changes to the returned instance
+            may or may not be reflected in this image.  Read-only.
+        `texture` : Texture
+            A Texture view of this image.  Changes to the returned instance
+            may or may not be reflected in this image.  Read-only.
+        `mipmapped_texture` : Texture
+            A Texture view of this image.  The returned Texture will have 
+            mipmaps filled in for all levels.  Requires that image dimensions
+            be powers of 2.  Read-only.
+
     '''
 
     def __init__(self, width, height):
@@ -146,15 +283,17 @@ class AbstractImage(object):
     def save(self, filename=None, file=None, encoder=None):
         '''Save this image to a file.
 
-        If `filename` specified, the extension is used as a hint to the
-        encoder for the format to write.
+        :Parameters:
+            `filename` : str
+                Used to set the image file format, and to open the output file
+                if `file` is unspecified.
+            `file` : file-like object or None
+                File to write image data to.
+            `encoder` : ImageEncoder or None
+                If unspecified, all encoders matching the filename extension
+                are tried.  If all fail, the exception from the first one
+                attempted is raised.
 
-        If `file` is specified, it is a file-like object that is written
-        to.  If unspecified, `filename` is opened.
-
-        `encoder` optionally gives an ImageEncoder to use, otherwise all
-        encoders matching the filename extension are tried.  If all fail,
-        the exception from the first one attempted is raised.
         '''
         if not file:
             file = open(filename, 'wb')
@@ -192,7 +331,17 @@ class AbstractImage(object):
         raise ImageException('Cannot blit %r to a framebuffer.' % self)
 
 class ImageData(AbstractImage):
-    '''An image represented as a string or array of unsigned bytes.
+    '''An image represented as a string of unsigned bytes.
+
+    :Ivariables:
+        `data` : str
+            Pixel data, encoded according to `format` and `pitch`.
+        `format` : str
+            The format string to use when reading or writing `data`.
+        `pitch` : int
+            Number of bytes per row.  Negative values indicate a top-to-bottom
+            arrangement.
+
     '''
 
     _swap1_pattern = re.compile('(.)', re.DOTALL)
@@ -206,18 +355,21 @@ class ImageData(AbstractImage):
     def __init__(self, width, height, format, data, pitch=None, skip_rows=0):
         '''Initialise image data.
 
-        width, height
-            Width and height of the image, in pixels
-        data
-            String or array/list of bytes giving the decoded data.
-        format
-            A valid format string, such as 'RGB', 'RGBA', 'ARGB', etc.
-        pitch
-            If specified, the number of bytes per row.  Negative values
-            indicate a top-to-bottom arrangement.  
-            Defaults to width * len(format).
-        skip_rows
-            Skip a number of rows in `data` before the image begins.
+        :Parameters:
+            `width` : int
+                Width of image data
+            `height` : int
+                Height of image data
+            `format` : str
+                A valid format string, such as 'RGB', 'RGBA', 'ARGB', etc.
+            `data` : sequence
+                String or array/list of bytes giving the decoded data.
+            `pitch` : int or None
+                If specified, the number of bytes per row.  Negative values
+                indicate a top-to-bottom arrangement.  Defaults to 
+                ``width * len(format)``.
+            `skip_rows` : int
+                Skip a number of rows in `data` before the image begins.
 
         '''
         super(ImageData, self).__init__(width, height)
@@ -260,10 +412,17 @@ class ImageData(AbstractImage):
     data = property(get_data, set_data)
 
     def set_mipmap_image(self, level, image):
-        '''Set a mipmap image for a particular level >= 1.  Image must
-        have correct dimensions for that mipmap level.  The mipmap image
-        will be applied to textures obtained via the `mipmapped_image`
-        attribute.
+        '''Set a mipmap image for a particular level.
+
+        The mipmap image will be applied to textures obtained via the
+        `mipmapped_image` attribute. 
+
+        :Parameters:
+            `level` : int
+                Mipmap level to set image at, must be >= 1.
+            `image` : AbstractImage
+                Image to set.  Must have correct dimensions for that mipmap
+                level (i.e., width >> level, height >> level)
         '''
 
         if level == 0:
@@ -287,7 +446,20 @@ class ImageData(AbstractImage):
         self.mipmap_images += [None] * (level - len(self.mipmap_images))
         self.mipmap_images[level - 1] = data
 
-    def create_texture(self, cls):
+    def create_texture(self, cls=Texture):
+        '''Create a texture containing this image.
+
+        If the image's dimensions are not powers of 2, a TextureRegion of
+        a larger Texture will be returned that matches the dimensions of this
+        image.
+
+        :Parameters:
+            `cls` : class (subclass of Texture)
+                Class to construct.
+
+        :rtype: cls or cls.region_class
+        '''
+
         texture = cls.create_for_size(
             GL_TEXTURE_2D, self.width, self.height)
         subimage = False
@@ -372,6 +544,7 @@ class ImageData(AbstractImage):
         
     def blit_to_texture(self, target, level, x, y, depth, internalformat=None):
         '''Draw this image to to the currently bound texture at `target`.
+
         If `internalformat` is specified, glTexImage is used to initialise
         the texture; otherwise, glTexSubImage is used to update a region.
         '''
@@ -423,6 +596,23 @@ class ImageData(AbstractImage):
         glPopClientAttrib()
 
     def crop(self, x, y, width, height):
+        '''Crop this image in-place.
+
+        This is not a particularly efficient implementation (it uses regular
+        expressions on the string data).
+
+        :Parameters:
+            `x` : int
+                Left edge of crop region
+            `y` : int
+                Bottom edge of crop region (count from bottom of image)
+            `width` : int
+                Width of crop region
+            `height` : int
+                Height of crop region
+
+        '''
+
         self._ensure_string_data()
 
         x1 = len(self._current_format) * x
@@ -571,12 +761,22 @@ class CompressedImageData(AbstractImage):
     _current_mipmapped_texture = None
 
     def __init__(self, width, height, gl_format, data, extension=None):
-        '''Initialise a CompressedImageData.
+        '''Construct a CompressedImageData with the given compressed data.
 
-        `data` is compressed in format `gl_format`, for example,
-        GL_COMPRESSED_RGBA_S3TC_DXT5_EXT.  `extension`, if specified,
-        gives the name of a GL extension to check for before creating
-        a texture.
+        :Parameters:
+            `width` : int
+                Width of image
+            `height` : int
+                Height of image
+            `gl_format` : int
+                GL constant giving format of compressed data; for example,
+                ``GL_COMPRESSED_RGBA_S3TC_DXT5_EXT``.
+            `data` : sequence
+                String or array/list of bytes giving compressed image data.
+            `extension` : str or None
+                If specified, gives the name of a GL extension to check for
+                before creating a texture.
+                
         '''
         if not _is_pow2(width) or not _is_pow2(height):
             raise ImageException('Dimensions of %r must be powers of 2' % self)
@@ -590,16 +790,31 @@ class CompressedImageData(AbstractImage):
     def set_mipmap_data(self, level, data):
         '''Set data for a mipmap level.
 
-        Data must be in same compressed format as image, and have correct
-        dimensions for the mipmap level (this is not checked).  If any
-        mipmap levels are specified, they are used; otherwise, mipmaps
-        for `mipmapped_texture` are generated automatically.
+        Supplied data gives a compressed image for the given mipmap level.
+        The image must be of the correct dimensions for the level 
+        (i.e., width >> level, height >> level); but this is not checked.  If
+        any mipmap levels are specified, they are used; otherwise, mipmaps for
+        `mipmapped_texture` are generated automatically.
+
+        :Parameters:
+            `level` : int
+                Level of mipmap image to set.
+            `data` : sequence
+                String or array/list of bytes giving compressed image data.
+                Data must be in same format as specified in constructor.
+
         '''
         # Extend mipmap_data list to required level
         self.mipmap_data += [None] * (level - len(self.mipmap_data))
         self.mipmap_data[level - 1] = data
 
     def verify_driver_supported(self):
+        '''Assert that the extension required for this image data is
+        supported.
+
+        Raises `ImageException` if not.
+        '''
+
         if self._have_extension is None and self.extension:
             self._have_extension = gl_info.have_extension(self.extension)
         if not self._have_extension:
@@ -698,6 +913,17 @@ class Texture(AbstractImage):
 
     Typically you will get an instance of Texture by accessing the `texture`
     member of any other AbstractImage.
+
+    :Ivariables:
+        `region_class` : class (subclass of TextureRegion)
+            Class to use when constructing regions of this texture.
+        `tex_coords` : tuple
+            4-tuple of 3-tuple of float, giving four 3D texture coordinates
+            of the bottom-left, bottom-right, top-right and top-left corners
+            of the texture.
+        `level` : int
+            The mipmap level of this texture.
+
     '''
 
     region_class = None # Set to TextureRegion after it's defined
@@ -720,12 +946,22 @@ class Texture(AbstractImage):
                         internalformat=None):
         '''Create a Texture with dimensions at least min_width, min_height.
 
-        Many older drivers require that each dimension is a power of 2;
-        this constructor ensures that the smallest powers of 2 above the
-        minimum dimensions specified are used.
-
-        If internalformat is specifed, the texture will also be initialised
-        with a zero'd image, otherwise it is simply an unbound texture object.
+        :Parameters:
+            `target` : int
+                GL constant giving texture target to use, typically
+                ``GL_TEXTURE_2D``.
+            `min_width` : int
+                Minimum width of texture (may be increased to createa  power
+                of 2).
+            `min_height` : int
+                Minimum height of texture (may be increased to create a power
+                of 2).
+            `internalformat` : int
+                GL constant giving internal format of texture; for example,
+                ``GL_RGBA``.  If unspecified, the texture will not be
+                initialised (only the texture name will be created on the
+                instance).   If specified, the image will be initialised
+                to this format with zero'd data.
         '''
         if target not in (GL_TEXTURE_RECTANGLE_NV, GL_TEXTURE_RECTANGLE_ARB):
             width = _nearest_pow2(min_width)
@@ -852,6 +1088,8 @@ Texture.region_class = TextureRegion
 
 class TileableTexture(Texture):
     '''A texture that can be tiled efficiently.
+
+    Use `create_from_image` classmethod to construct.
     '''
     def __init__(self, width, height, target, id):
         if not _is_pow2(width) or not _is_pow2(height):
@@ -863,6 +1101,7 @@ class TileableTexture(Texture):
         raise ImageException('Cannot get region of %r' % self)
 
     def blit_tiled_to_buffer(self, x, y, z, width, height):
+        '''Blit this texture tiled over the given area.'''
         u1 = v1 = 0
         u2 = width / float(self.width)
         v2 = height / float(self.height)
@@ -916,6 +1155,7 @@ class TileableTexture(Texture):
         return image.create_texture(cls)
 
 class DepthTexture(Texture):
+    '''A texture with depth samples (typically 24-bit).'''
     def blit(self, source, x, y, z):
         glBindTexture(GL_TEXTURE_2D, self.id)
         source.blit_depth_to_texture(self.level, x, y, z)

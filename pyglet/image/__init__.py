@@ -115,8 +115,8 @@ def load_image(filename, file=None, decoder=None):
     '''Load an image from a file.
 
     :note: You can make no assumptions about the return type; usually it will
-    be ImageData or CompressedImageData, but decoders are free to return any
-    subclass of AbstractImage.
+        be ImageData or CompressedImageData, but decoders are free to return
+        any subclass of AbstractImage.
 
     :Parameters:
         `filename` : str
@@ -157,8 +157,8 @@ def create_image(width, height, pattern=None):
     '''Create an image optionally filled with the given pattern.
 
     :note: You can make no assumptions about the return type; usually it will
-    be ImageData or CompressedImageData, but patterns are free to return any
-    subclass of AbstractImage.
+        be ImageData or CompressedImageData, but patterns are free to return
+        any subclass of AbstractImage.
 
     :Parameters:
         `width` : int

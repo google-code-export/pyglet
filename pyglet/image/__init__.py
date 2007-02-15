@@ -446,7 +446,7 @@ class ImageData(AbstractImage):
         self.mipmap_images += [None] * (level - len(self.mipmap_images))
         self.mipmap_images[level - 1] = data
 
-    def create_texture(self, cls=Texture):
+    def create_texture(self, cls):
         '''Create a texture containing this image.
 
         If the image's dimensions are not powers of 2, a TextureRegion of

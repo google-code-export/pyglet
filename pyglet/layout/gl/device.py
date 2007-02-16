@@ -174,9 +174,9 @@ class GLRenderDevice(RenderDevice):
                         width = x2 - x1
                     if repeat in ('repeat', 'repeat-y'):
                         height = y1 - y2
-                    texture.blit_tiled_to_buffer(x1, y2, 0, width, height)
+                    texture.blit_tiled(x1, y2, 0, width, height)
                 else:
-                    texture.blit_to_buffer(x1, y2, 0)
+                    texture.blit(x1, y2, 0)
                 glPopAttrib()
    
 class GLTextFrame(TextFrame):

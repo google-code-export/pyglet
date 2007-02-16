@@ -46,7 +46,7 @@ class TestLoad(ImageRegressionTestCase):
                      self.window.height/float(self.checkerboard.height),
                      1.)
             glMatrixMode(GL_MODELVIEW)
-            self.screen.blit(self.checkerboard, 0, 0, 0)
+            self.checkerboard.blit(0, 0, 0)
             glMatrixMode(GL_TEXTURE)
             glPopMatrix()
             glMatrixMode(GL_MODELVIEW)
@@ -57,7 +57,7 @@ class TestLoad(ImageRegressionTestCase):
             glTranslatef((self.window.width - self.texture.width) / 2,
                          (self.window.height - self.texture.height) / 2,
                          0)
-            self.screen.blit(self.texture, 0, 0, 0)
+            self.texture.blit(0, 0, 0)
             glPopMatrix()
         self.window.flip()
 

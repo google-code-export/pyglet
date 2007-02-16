@@ -84,7 +84,7 @@ class GlyphTextureAtlas(Texture):
         self.line_height = max(self.line_height, image.height)
         region = self.get_region(
             self.x, self.y, image.width, image.height)
-        region.blit(image, 0, 0, 0)
+        image.blit_to_texture(region, 0, 0, 0)
         self.x += image.width
         return region
 

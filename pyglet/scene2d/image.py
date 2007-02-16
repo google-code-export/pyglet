@@ -128,7 +128,7 @@ class Image2d(Drawable):
         # Make quad display list
         self.__quad_list = glGenLists(1)
         glNewList(self.__quad_list, GL_COMPILE)
-        #self.texture.blit_to_buffer(0, 0, 0)  # This does same as QUADS below
+        #self.texture.blit(0, 0, 0)  # This does same as QUADS below
         glBegin(GL_QUADS)
         glTexCoord3f(*self.uvs[0])
         glVertex2f(0, 0)

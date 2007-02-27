@@ -44,10 +44,9 @@ class Frame(object):
     style = None
     computed_properties = None
     continuation = None
-    is_continuation = False
-    force_border = False    # hack to draw LR borders even if a continuation;
-                            # should probably not test continuation for this
-                            # anyway. XXX
+
+    open_border = True      # False for continued frames (usually)
+    close_border = True     # False for continuation frames (usually)
 
     # Incremental reflow flag
     flow_dirty = True
@@ -218,10 +217,10 @@ class Frame(object):
         bbottom = compute('border-bottom-width')
         bleft = compute('border-left-width')
 
-        if self.continuation and not self.force_border:
-            bright = 0
-        if self.is_continuation and not self.force_border:
+        if not self.open_border:
             bleft = 0
+        if not self.close_border:
+            bright = 0
 
         if btop:
             render_device.draw_horizontal_border(
@@ -522,6 +521,13 @@ class BlockFrame(Frame):
                 child.flow_inline(context)
 
             while child:
+                # Avoid adding empty frames into line box
+                if strip_lines and lines[-1].is_empty:
+                    child.lstrip()
+                if not child.border_edge_width:
+                    child = child.continuation
+                    continue
+
                 self.flowed_children.append(child)
                 context.strip_next = child.strip_next
                 child_width = child.margin_left + child.border_edge_width + \
@@ -590,8 +596,6 @@ class LineBox(object):
         self.line_descent = min(self.line_descent, frame.line_descent)
         self.line_height = max(self.line_height, 
                                self.line_ascent - self.line_descent)
-        if self.strip_lines and self.is_empty:
-            frame.lstrip()
         self.is_empty = False
 
     def position(self, x, y, containing_block):
@@ -608,7 +612,7 @@ class LineBox(object):
             x += frame.margin_left
             valign = frame.get_computed_property('vertical-align')
             if valign == 'baseline':
-                ly = baseline - frame.content_ascent + frame.margin_top
+                ly = baseline - frame.baseline + frame.margin_top
             elif valign == 'top':
                 ly = y + frame.margin_top
             else:
@@ -629,6 +633,7 @@ class InlineFrame(Frame):
     line_descent = 0
     content_ascent = 0
     content_descent = 0
+    baseline = 0        # +ve distance from top of border to baseline
 
     def __init__(self, style, element):
         super(InlineFrame, self).__init__(style, element)
@@ -653,6 +658,7 @@ class InlineFrame(Frame):
     def flow_inline(self, context):
         context = context.copy()
         self.continuation = None
+        self.close_border = True
 
         computed = self.get_computed_property
         def used(property):
@@ -678,6 +684,22 @@ class InlineFrame(Frame):
         self.border_edge_width = self.content_left
 
         def add(child):
+            # Correct vertical height for child that was split but turns out
+            # to be in the same line.
+            if frame.flowed_children and \
+               child == frame.flowed_children[-1].continuation and False:
+                prev = frame.flowed_children[-1]
+                child.line_ascent = max(child.line_ascent, 
+                                        prev.line_ascent)
+                child.content_ascent = max(child.content_ascent, 
+                                           prev.content_ascent)
+                child.line_descent = min(child.line_descent, 
+                                         prev.line_descent)
+                child.content_descent = min(child.content_descent, 
+                                            prev.content_descent)
+                child.border_edge_height = self.content_top + content_bottom + \
+                    child.line_ascent - child.line_descent
+
             frame.flowed_children.append(child)
             frame.border_edge_width += child.margin_left + \
                 child.border_edge_width + child.margin_right
@@ -697,13 +719,12 @@ class InlineFrame(Frame):
             frame.flowed_children = []
 
         def finish(frame):
-            frame.content_ascent += self.content_top
-            frame.content_descent -= content_bottom
-            frame.border_edge_height = frame.content_ascent - \
-                frame.content_descent
-            if line_height == 'normal':
-                frame.line_ascent = frame.content_ascent
-                frame.line_descent = frame.content_descent
+            frame.border_edge_height = self.content_top + content_bottom + \
+                frame.line_ascent - frame.line_descent
+            frame.baseline = self.content_top + frame.content_ascent
+            #if line_height == 'normal':
+            #    frame.line_ascent = frame.content_ascent
+            #    frame.line_descent = frame.content_descent
 
         frame = self
         init(frame)
@@ -726,18 +747,22 @@ class InlineFrame(Frame):
                     child.margin_right
 
                 if not context.can_add(c_width, ignore_reserve):
-                    continuation = InlineFrame(self.style, self.element)
-                    continuation.is_continuation = True
-                    continuation.margin_right = self.margin_right
-                    init(continuation)
+                    if not frame.flowed_children:
+                        context.newline()
+                    else:
+                        continuation = InlineFrame(self.style, self.element)
+                        continuation.open_border = False
+                        continuation.margin_right = self.margin_right
+                        init(continuation)
 
-                    finish(frame)
-                    context.newline()
-                     
-                    frame.margin_right = 0
+                        finish(frame)
+                        context.newline()
+                         
+                        frame.margin_right = 0
 
-                    frame.continuation = continuation
-                    frame = continuation
+                        frame.continuation = continuation
+                        frame.close_border = False
+                        frame = continuation
 
                 context.add(c_width)
                 buffer.append(child)
@@ -752,19 +777,14 @@ class InlineFrame(Frame):
 
         if buffer:
             continuation = InlineFrame(self.style, self.element)
-            continuation.is_continuation = True
+            continuation.open_border = False
             continuation.margin_right = self.margin_right
             init(continuation)
 
-            # XXX HACK
-            continuation.line_ascent = frame.line_ascent
-            continuation.line_descent = frame.line_descent
-            continuation.content_ascent = frame.content_ascent
-            continuation.content_descent = frame.content_descent
-            
             finish(frame)
             frame.margin_right = 0
             frame.continuation = continuation
+            frame.close_border = False
             frame = continuation
             for f in buffer:
                 add(f)
@@ -776,12 +796,12 @@ class InlineFrame(Frame):
     def position(self, x, y):
         super(InlineFrame, self).position(x, y)
         x = self.content_left
-        baseline = self.content_ascent
+        baseline = self.baseline
         for child in self.flowed_children:
             x += child.margin_left
             valign = child.get_computed_property('vertical-align')
             if valign == 'baseline':
-                ly = baseline - child.content_ascent + child.margin_top
+                ly = baseline - child.baseline + child.margin_top
             elif valign == 'top':
                 ly = child.margin_top
             child.position(x, ly)
@@ -804,11 +824,11 @@ class TextFrame(InlineFrame):
 
         # Align baseline to integer (not background/border, that screws up
         # touching borders).
-        rounding = (y - self.content_ascent) - int(y - self.content_ascent)
+        rounding = (y - self.baseline) - int(y - self.baseline)
         y -= rounding
 
         self.draw_text(x + self.content_left, 
-                       y - self.content_ascent, 
+                       y - self.baseline, 
                        render_device)
 
     def draw_text(self, x, y, render_context):
@@ -840,6 +860,8 @@ class InlineReplacedElementFrame(InlineFrame):
         self.content_ascent = self.content_descent = 0
         self.line_ascent = self.line_descent =  0
         self.border_edge_height = 0
+        self.close_border = False
+        self.open_border = False
 
         self.continuation = InlineReplacedElementDelegate(self, drawable)
 
@@ -861,19 +883,17 @@ class InlineReplacedElementFrame(InlineFrame):
         pass  # continuation only is drawn.
 
 class InlineReplacedElementDelegate(InlineFrame):
-    force_border = True
-
     def __init__(self, continued_frame, drawable):
         super(InlineReplacedElementDelegate, self).__init__(
             continued_frame.style, continued_frame.element)
-        self.is_continuation = True
         self.drawable = drawable
         self.continued_frame = continued_frame
 
         # Add an empty continuation to allow for line-breaks after this
         # frame.
         self.continuation = InlineFrame(self.style, self.element)
-        self.continuation.is_continuation = True
+        self.continuation.open_border = False
+        self.continuation.close_border = False
 
     def flow_inline(self, context):
         computed = self.get_computed_property
@@ -963,6 +983,7 @@ class InlineReplacedElementDelegate(InlineFrame):
         self.content_ascent = self.line_ascent = \
             self.border_edge_height + self.margin_top + self.margin_bottom
         self.content_descent = self.line_descent = 0
+        self.baseline = self.content_ascent
 
     def draw_cull(self, x, y, render_device, left, top, right, bottom):
         # Check for partial intersection

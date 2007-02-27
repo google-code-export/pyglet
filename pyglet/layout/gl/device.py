@@ -40,7 +40,7 @@ class GLRenderDevice(RenderDevice):
         bold = weight >= 700
         assert type(size) == Dimension and size.unit == 'pt'
 
-        return pyglet.text.Font(names, size, italic=italic, bold=bold)
+        return pyglet.text.load_font(names, size, italic=italic, bold=bold)
 
     def create_text_frame(self, style, element, text):
         return GLTextFrame(style, element, text)
@@ -183,7 +183,6 @@ class GLTextFrame(TextFrame):
     glyph_string = None
     from_index = 0
     to_index = None
-    is_continuation = False
 
     content_ascent = 0
 
@@ -216,6 +215,7 @@ class GLTextFrame(TextFrame):
         self.from_index = 0
         self.strip_next = False
         self.continuation = None
+        self.close_border = True
         
         # Final white-space processing step (besides line beginning strip)
         # from 16.6.1 step 4.
@@ -250,8 +250,8 @@ class GLTextFrame(TextFrame):
 
         # Calculate text metrics (actually not dependent on flow, could
         # optimise out).
-        self.content_ascent = font.ascent + self.content_top
-        self.content_descent = font.descent - content_bottom
+        self.content_ascent = font.ascent
+        self.content_descent = font.descent
         line_height = self.get_computed_property('line-height') 
         if line_height != 'normal':
             half_leading = (line_height - \
@@ -260,8 +260,10 @@ class GLTextFrame(TextFrame):
             half_leading = 0
         self.line_ascent = self.content_ascent + half_leading
         self.line_descent = self.content_descent - half_leading
-        self.border_edge_height = self.content_ascent - self.content_descent
+        self.border_edge_height = self.content_ascent - self.content_descent +\
+            self.content_top + content_bottom
         self.border_edge_width = self.content_left
+        self.baseline = self.content_ascent + self.content_top
 
         context.add(self.margin_left + self.content_left)
         context.reserve(content_right + self.margin_right)
@@ -289,7 +291,7 @@ class GLTextFrame(TextFrame):
                     self.style, self.element, self.text)
                 continuation.parent = self.parent
                 continuation.glyph_string = self.glyph_string
-                continuation.is_continuation = True
+                continuation.open_border = False
                 continuation.from_index = continuation.to_index = frame.to_index
 
                 continuation.border_edge_height = self.border_edge_height
@@ -299,6 +301,7 @@ class GLTextFrame(TextFrame):
                 continuation.line_descent = self.line_descent
                 continuation.content_ascent = self.content_ascent
                 continuation.content_descent = self.content_descent
+                continuation.baseline = self.baseline
 
                 # Remove right-margin from continued frame
                 frame.margin_right = 0
@@ -317,6 +320,7 @@ class GLTextFrame(TextFrame):
 
                 # Ready for next iteration
                 frame.continuation = continuation
+                frame.close_border = False
                 frame = continuation
                 context.newline()
 

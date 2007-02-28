@@ -5,7 +5,7 @@ import pyglet.window
 from pyglet.window.event import *
 from pyglet.gl import *
 from pyglet import clock
-from pyglet.scene2d import Image2d
+from pyglet.image import load_image
 
 from ctypes import *
 
@@ -15,7 +15,7 @@ if len(sys.argv) != 2:
 
 window = pyglet.window.Window(width=400, height=400)
 
-image = Image2d.load(sys.argv[1])
+image = load_image(sys.argv[1])
 s = max(image.width, image.height)
 
 c = clock.Clock(60)
@@ -41,7 +41,7 @@ while not window.has_exit:
 
     glScalef(1./s, 1./s, 1.)
     glTranslatef(-image.width/2, -image.height/2, -1.)
-    image.draw()
+    image.blit(0, 0, 0)
 
     window.flip()
 

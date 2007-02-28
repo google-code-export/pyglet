@@ -1,7 +1,7 @@
 from pyglet.sprite.geometry import *
 from pyglet.gl import *
 
-class SpriteRepresentation:
+class SpriteRepresentation(object):
     def draw(self, sprite):
          # Draw the given body at its position/orientation/time.
          raise NotImplementedError('Implement in subclass')
@@ -15,14 +15,14 @@ class SpriteRepresentation:
 class ImageSpriteRepresentation(SpriteRepresentation):
     '''
     '''
-    # XXX draw and draw_many assert isinstance(sprite, ImageSprite)
-
     cache = {}
 
-    def __new__(cls, texture, origin):
-        if (texture, origin) in self.cache:
-            return self.cache[texture, origin]
-        o = self.cache[texture, origin] = cls(texture, origin)
+    # XXX hmmm
+    @classmethod
+    def new(cls, texture, origin=(0,0)):
+        if (texture, origin) in cls.cache:
+            return cls.cache[texture, origin]
+        o = cls.cache[texture, origin] = cls(texture, origin)
         return o
 
     def __init__(self, texture, origin=(0,0)):
@@ -47,7 +47,8 @@ class ImageSpriteRepresentation(SpriteRepresentation):
         glEndList()
 
     def key(self):
-        return ('ImageSpriteRepresentation', self.texture.id, self.origin)
+        # share state amongst all users of this texture
+        return ('ImageSpriteRepresentation', self.texture.id)
 
     def draw(self, sprite):
         glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT)
@@ -56,22 +57,36 @@ class ImageSpriteRepresentation(SpriteRepresentation):
         self.texture.blit(sprite.x, sprite.y, 0)
         glPopAttrib()
  
-    # draw_many can be optimised by binding texture / state once.
     def draw_many(self, sprites):
+        '''Optimise by binding texture / state once (grouped by key()
+        above).
+        '''
         glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(self.texture.target)
         glBindTexture(self.texture.target, self.texture.id)
 
-        ox = oy = 0
+        ox = oy = oz = 0
         for sprite in sprites:
-            dx, dy = self.origin
-            x, y = sprite.x - dx, sprite.y - dy
-            # XXX self.origin
-            glTranslatef(x-ox, y-oy, 0)
-            glCallList(self.display_list)
-            ox, oy = x, y
+            dx, dy = sprite.representation.origin
+            x, y, z = sprite.x - dx, sprite.y - dy, 0 #sprite.z
+
+            if sprite.orientation:
+                glPushMatrix()
+                cx, cy = sprite.geometry.center
+                glTranslatef(cx, cy, 0)
+                glRotatef(sprite.orientation, 0, 0, 1)
+                glTranslatef(-cx, -cy, 0)
+
+            glTranslatef(x-ox, y-oy, z-oz)
+
+            glCallList(sprite.representation.display_list)
+
+            if sprite.orientation:
+                glPopMatrix()
+
+            ox, oy, oz = x, y, z
 
         glPopAttrib()
 

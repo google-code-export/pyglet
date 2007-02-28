@@ -38,12 +38,12 @@ class RectGeometry(SpriteGeometry):
     def get_x(self):
         return self._x
     def set_x(self, x):
-        self._x = self.sprite.position.x = x
+        self._x = self.sprite.x = x
     x = property(get_x, set_x)
     def get_y(self):
         return self._y
     def set_y(self, y):
-        self._y = self.sprite.position.y = y
+        self._y = self.sprite.y = y
     y = property(get_y, set_y)
 
     def get_center(self):

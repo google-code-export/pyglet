@@ -14,38 +14,35 @@ import os
 import sys
 import random
 
-from pyglet import options
-options['gl_error_check'] = False
-
 from pyglet.window import Window
 from pyglet.clock import Clock
-from pyglet.scene2d import *
+from pyglet.sprite import *
+from pyglet.image import *
+from pyglet.euclid import *
 from pyglet.gl import *
 
 w = Window(600, 600, vsync=False)
 
 dirname = os.path.dirname(__file__)
-img = Image2d.load(os.path.join(dirname, 'car.png'))
+img = load_image(os.path.join(dirname, 'car.png'))
 
-class BouncySprite(Sprite):
+class BouncySprite(ImageSprite):
     dx = dy = 0
     def update(self):
-        # move, check bounds
-        p = self.properties
-        self.x += self.dx; self.y += self.dy
-        if self.x < 0: self.x = 0; self.dx = -self.dx
-        elif self.right > 600: self.right = 600; self.dx = -self.dx
-        if self.y < 0: self.y = 0; self.dy = -self.dy
-        elif self.top > 600: self.top = 600; self.dy = -self.dy
+        self.x += self.dx
+        self.y += self.dy
+        if self.x < 0: self.x = 0; self.dx *= -1
+        elif self.x > 580: self.x = 580; self.dx *= -1
+        if self.y < 0: self.y = 0; self.dy *= -1
+        elif self.y > 580: self.y = 580; self.dy *= -1
 
 sprites = []
 numsprites = int(sys.argv[1])
 for i in range(numsprites):
-    x = random.randint(0, w.width-img.width)
-    y = random.randint(0, w.height-img.height)
-    s = BouncySprite(x, y, img.width, img.height, img)
-    s.dx = random.randint(-10, 10)
-    s.dy = random.randint(-10, 10)
+    p = Point2(random.randint(0, w.width-img.width),
+        random.randint(0, w.height-img.height))
+    s = BouncySprite(img.texture, p)
+    s.velocity = Vector2(random.randint(-10, 10), random.randint(-10, 10))
     sprites.append(s)
 
 view = FlatView.from_window(w, sprites=sprites)
@@ -58,7 +55,6 @@ while 1:
     if w.has_exit:
         print 'FPS:', clock.get_fps()
         print 'us per sprite:', float(t) / (numsprites * numframes) * 1000000
-
         break
     t += clock.tick()
     w.dispatch_events()

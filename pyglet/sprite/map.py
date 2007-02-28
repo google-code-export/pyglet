@@ -46,12 +46,13 @@ def rectmap_factory(resource, tag):
         for j, cell in enumerate(column.getElementsByTagName('cell')):
             tile = resource.get_resource(cell.getAttribute('tile'))
             s = ImageSprite(tile)
+            s.geometry_factory = m.geometry_factory
             s.i, s.j = i, j
+            s.position = s.geometry.bottomleft
             # XXX 
             #s.blueprint = resource.handle_properties(image?)
             for name, value in resource.handle_properties(cell):
                 setattr(s, name, value)
-            s.geometry_factory = m.geometry_factory
             c.append(s)
     return m
 
@@ -75,12 +76,12 @@ def hexmap_factory(resource, tag):
         for j, cell in enumerate(column.getElementsByTagName('cell')):
             tile = resource.get_resource(cell.getAttribute('tile'))
             s = ImageSprite(tile)
+            s.geometry_factory = m.geometry_factory
             s.i, s.j = i, j
             # XXX 
             #s.blueprint = resource.handle_properties(image?)
             for name, value in resource.handle_properties(cell):
                 setattr(s, name, value)
-            s.geometry_factory = m.geometry_factory
             c.append(s)
     return m
 

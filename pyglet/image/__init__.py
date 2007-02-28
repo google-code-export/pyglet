@@ -1197,7 +1197,6 @@ class TextureRegion(Texture):
         r = z / float(owner.images)
         self.tex_coords = ((u1, v1, r), (u2, v1, r), (u2, v2, r), (u1, v2, r))
 
-
     def _get_image_data(self):
         image_data = self.owner.get_image_data(self.z)
         return image_data.get_region(self.x, self.y, self.width, self.height)
@@ -1211,6 +1210,10 @@ class TextureRegion(Texture):
 
     def blit_into(self, source, x, y, z):
         self.owner.blit_into(source, x + self.x, y + self.y, z + self.z)
+
+    def __repr__(self):
+        return '<%s %dx%d @%d,%d,%d>' % (self.__class__.__name__,
+            self.width, self.height, self.x, self.y, self.z)
 
 Texture.region_class = TextureRegion
 
@@ -1774,8 +1777,8 @@ def imageatlas_factory(resource, tag):
     #atlas.properties = resource.handle_properties(tag)
 
     if tag.hasAttribute('id'):
-        atlas.id = tag.getAttribute('id')
-        resource.add_resource(atlas.id, atlas)
+        #atlas.id = tag.getAttribute('id')
+        resource.add_resource(tag.getAttribute('id'), atlas)
 
     # figure default size if specified
     if tag.hasAttribute('size'):
@@ -1803,8 +1806,8 @@ def imageatlas_factory(resource, tag):
     #image.properties = resource.handle_properties(tag)
 
     if tag.hasAttribute('id'):
-        image.id = tag.getAttribute('id')
-        resource.add_resource(image.id, image)
+        #image.id = tag.getAttribute('id')
+        resource.add_resource(tag.getAttribute('id'), image)
         
     return atlas
 
@@ -1819,8 +1822,8 @@ def image_factory(resource, tag):
     #image.properties = resource.handle_properties(tag)
 
     if tag.hasAttribute('id'):
-        image.id = tag.getAttribute('id')
-        resource.add_resource(image.id, image)
+        #image.id = tag.getAttribute('id')
+        resource.add_resource(tag.getAttribute('id'), image)
 
     return image
 

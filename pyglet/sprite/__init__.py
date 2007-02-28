@@ -74,10 +74,10 @@ class Sprite(object):
         self.ddx, self.ddy = acceleration
     acceleration = property(get_acceleration, set_acceleration)
 
-    def geometry_factory(self):
-        return self.representation.geometry_factory(self)
+    def geometry_factory(self, sprite):
+        return self.representation.geometry_factory(sprite)
     def get_geometry(self):
-        return self.geometry_factory()
+        return self.geometry_factory(self)
     geometry = property(get_geometry)
  
     def x__getattr__(self, name):
@@ -101,13 +101,14 @@ class ImageSprite(Sprite):
             collider=None, time=0, blueprint=None, velocity=(0,0),
             acceleration=(0,0), angular_velocity=0, tint_color=(1, 1, 1, 1),
             blend_color=None):
+        # XXX hmmm...
         if isinstance(image, ImageSpriteRepresentation):
             representation = image
         elif isinstance(image, ImageData):
-            representation = ImageSpriteRepresentation(image.texture)
+            representation = ImageSpriteRepresentation.new(image.texture)
         else:
             # assume Texture interface
-            representation = ImageSpriteRepresentation(image)
+            representation = ImageSpriteRepresentation.new(image)
         super(ImageSprite, self).__init__(representation, position, orientation,
             collider, time, blueprint, velocity, acceleration,
             angular_velocity)
@@ -155,6 +156,7 @@ class AnimatedImageSprite(ImageSprite):
         self.period = period
         self.timings = timings
  
+
 class TextSprite(Sprite):
     '''Upon creation, sets representation to TextSpriteRepresentation
     (can probably keep class mapping on font)
@@ -193,6 +195,7 @@ class TextSprite(Sprite):
         # XXX property
         #self.height = representation.???.height
  
+
 class OwnerDrawSprite(Sprite):
     def draw(self):
         raise NotImplementedError('Implement me')
@@ -200,6 +203,7 @@ class OwnerDrawSprite(Sprite):
     def geometry_factory(self):
         raise NotImplementedError('Implement me')
  
+
 class SpriteGroup(Sprite):
     children = []
     #representation = GroupRepresentation()

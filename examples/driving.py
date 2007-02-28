@@ -6,29 +6,29 @@ from pyglet.window.event import *
 from pyglet.window.key import *
 import pyglet.clock
 from pyglet.euclid import Vector2, Matrix3
-from pyglet.scene2d import *
+from pyglet.image import *
+from pyglet.sprite import *
 
-class CarSprite(RotatableSprite):
+class CarSprite(ImageSprite):
+    speed = 0
     def update(self, dt):
         # handle input and move the car
-        self.angle += (keyboard[K_LEFT] - keyboard[K_RIGHT]) * 150 * dt
-        speed = self.properties.get('speed', 0)
-        speed += (keyboard[K_UP] - keyboard[K_DOWN]) * 75 
-        if speed > 300: speed = 300
-        if speed < -150: speed = -150
-        self.properties['speed'] = speed
-        r = Matrix3.new_rotate(math.radians(self.get_angle()))
-        v = dt * speed * (r * Vector2(0, 1))
+        self.orientation += (keyboard[K_LEFT] - keyboard[K_RIGHT]) * 150 * dt
+        self.speed += (keyboard[K_UP] - keyboard[K_DOWN]) * 75 
+        if self.speed > 300: self.speed = 300
+        if self.speed < -150: self.speed = -150
+        r = Matrix3.new_rotate(math.radians(self.orientation))
+        v = dt * self.speed * (r * Vector2(0, 1))
         self.x += v.x
         self.y += v.y
 
 w = pyglet.window.Window(width=512, height=512)
-w.set_exclusive_mouse()
+#w.set_exclusive_mouse()
 
 # load the map and car and set up the scene and view
 dirname = os.path.dirname(__file__)
 m = RectMap.load_xml(os.path.join(dirname, 'road-map.xml'), 'map0')
-car = CarSprite.from_image(0, 0, Image2d.load(os.path.join(dirname, 'car.png')))
+car = CarSprite(load_image(os.path.join(dirname, 'car.png')))
 view = FlatView.from_window(w, layers=[m], sprites=[car])
 
 keyboard = KeyboardStateHandler()
@@ -36,12 +36,13 @@ w.push_handlers(keyboard)
 
 clock = pyglet.clock.Clock(fps_limit=30)
 clock.schedule(car.update)
+print 'e'
 while not w.has_exit:
     dt = clock.tick()
     w.dispatch_events()
 
     # re-focus on the car
-    view.fx, view.fy = car.center
+    view.fx, view.fy = car.geometry.center
 
     # draw
     view.draw()

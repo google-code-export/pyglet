@@ -107,6 +107,7 @@ from StringIO import StringIO
 from pyglet.gl import *
 from pyglet.gl.gl_info import *
 from pyglet.window import *
+from pyglet.resource import register_factory, ResourceError
 
 class ImageException(Exception):
     pass
@@ -1758,6 +1759,71 @@ class TextureGrid(TextureRegion, UniformTextureSequence):
 
     def __len__(self):
         return len(self.items)
+
+
+#
+# Resource file factory functions
+# 
+@register_factory('imageatlas')
+def imageatlas_factory(resource, tag):
+    filename = resource.find_file(tag.getAttribute('file'))
+    if not filename:
+        raise ResourceError, 'No file= on <imageatlas> tag'
+    atlas = load_image(filename).texture
+
+    #atlas.properties = resource.handle_properties(tag)
+
+    if tag.hasAttribute('id'):
+        atlas.id = tag.getAttribute('id')
+        resource.add_resource(atlas.id, atlas)
+
+    # figure default size if specified
+    if tag.hasAttribute('size'):
+        d_width, d_height = map(int, tag.getAttribute('size').split('x'))
+    else:
+        d_width = d_height = None
+
+    for child in tag.childNodes:
+        if not hasattr(child, 'tagName'): continue
+        if child.tagName != 'image':
+            raise ValueError, 'invalid child'
+
+        if child.hasAttribute('size'):
+            width, height = map(int, child.getAttribute('size').split('x'))
+        elif d_width is None:
+            raise ValueError, 'atlas or subimage must specify size'
+        else:
+            width, height = d_width, d_height
+
+        x, y = map(int, child.getAttribute('offset').split(','))
+        image = atlas.get_region(x, y, width, height)
+        id = child.getAttribute('id')
+        resource.add_resource(id, image)
+
+    #image.properties = resource.handle_properties(tag)
+
+    if tag.hasAttribute('id'):
+        image.id = tag.getAttribute('id')
+        resource.add_resource(image.id, image)
+        
+    return atlas
+
+
+@register_factory('image')
+def image_factory(resource, tag):
+    filename = resource.find_file(tag.getAttribute('file'))
+    if not filename:
+        raise ResourceError, 'No file= on <image> tag'
+    image = load_image(filename)
+
+    #image.properties = resource.handle_properties(tag)
+
+    if tag.hasAttribute('id'):
+        image.id = tag.getAttribute('id')
+        resource.add_resource(image.id, image)
+
+    return image
+
 
 # Initialise default codecs
 from pyglet.image.codecs import *

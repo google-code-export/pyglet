@@ -47,10 +47,8 @@ __version__ = '$Id$'
 import operator
 
 from pyglet.event import EventDispatcher, EVENT_UNHANDLED
-from pyglet.scene2d.camera import FlatCamera
-from pyglet.scene2d.drawable import draw_many
-from pyglet.scene2d.map import Map
-from pyglet.scene2d.sprite import SpriteLayer
+from pyglet.sprite.camera import FlatCamera
+from pyglet.sprite.map import Map
 from pyglet.gl import *
 
 class View(EventDispatcher):
@@ -270,7 +268,6 @@ class FlatView(View):
         fx = int(self.fx)
         fy = int(self.fy)
 
-        
         if self.allow_oob: return (fx, fy)
 
         # check that any layer has bounds
@@ -280,7 +277,6 @@ class FlatView(View):
                 bounded.append(layer)
         if not bounded:
             return (fx, fy)
-
 
         # figure the bounds min/max
         m = bounded[0]
@@ -373,12 +369,29 @@ class FlatView(View):
             if translate:
                 glPushMatrix()
                 glTranslatef(layer.x, layer.y, layer.z)
-            draw_many(layer.get_in_region(x1, y1, x2, y2))
+
+            sprites = layer.get_in_region(x1, y1, x2, y2)
+
+            d = {}
+            reps = {}
+            for sprite in sprites:
+                key = sprite.representation.key()
+                reps[key] = sprite.representation
+                d.setdefault(key, []).append(sprite)
+            for key in d:
+                reps[key].draw_many(d[key])
+
             if translate:
                 glPopMatrix()
 
-        if self.sprites:
-            draw_many(self.sprites)
+        d = {}
+        reps = {}
+        for sprite in self.sprites:
+            key = sprite.representation.key()
+            reps[key] = sprite.representation
+            d.setdefault(key, []).append(sprite)
+        for key in d:
+            reps[key].draw_many(d[key])
 
         glPopMatrix()
  
@@ -393,4 +406,36 @@ class ViewScrollHandler(object):
         fx, fy = self.view._determine_focus()
         self.view.fx = fx + dx * 30
         self.view.fy = fy + dy * 30
+
+
+class SpriteLayer(object):
+    '''Represents a group of sprites at the same z depth.
+    '''
+    def __init__(self, z=0, sprites=None):
+        self.z = z
+        if sprites is None:
+            sprites = []
+        self.sprites = sprites
+
+    def get(self, x, y):
+        ''' Return object at position px=(x,y).
+        Return None if out of bounds.'''
+        r = []
+        for sprite in self.sprites:
+            if sprite.contains(x, y):
+                r.append(sprite)
+        return r
+
+    def get_in_region(self, x1, y1, x2, y2):
+        '''Return Drawables that are within the pixel bounds specified by
+        the bottom-left (x1, y1) and top-right (x2, y2) corners.
+        '''
+        r = []
+        for sprite in self.sprites:
+            if sprite._x > x2: continue
+            if (sprite._x + sprite.width) < x1: continue
+            if sprite._y > y2: continue
+            if (sprite._y + sprite.height) < y1: continue
+            r.append(sprite)
+        return r
 

@@ -15,8 +15,7 @@ __version__ = '$Id$'
 
 import unittest
 from render_base import RenderBase
-import pyglet.scene2d
-from pyglet.scene2d.debug import gen_rect_map
+from pyglet.sprite.debug import gen_rect_map
 
 class OOBTest(RenderBase):
     def test_main(self):

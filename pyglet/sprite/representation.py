@@ -6,7 +6,7 @@ class SpriteRepresentation(object):
          # Draw the given body at its position/orientation/time.
          raise NotImplementedError('Implement in subclass')
  
-    def draw_many(self, sprite):
+    def draw_many(self, sprites):
         # Draw a list of bodies at their positions/orientations/times.
         # Default implementation is:
         for sprite in sprites:
@@ -66,6 +66,7 @@ class ImageSpriteRepresentation(SpriteRepresentation):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(self.texture.target)
         glBindTexture(self.texture.target, self.texture.id)
+        glPushMatrix()
 
         ox = oy = oz = 0
         for sprite in sprites:
@@ -88,6 +89,7 @@ class ImageSpriteRepresentation(SpriteRepresentation):
 
             ox, oy, oz = x, y, z
 
+        glPopMatrix()
         glPopAttrib()
 
     def geometry_factory(self, sprite):
@@ -114,7 +116,6 @@ class OwnerDrawSpriteRepresentation(SpriteRepresentation):
     # draw() calls sprite.draw().
     pass
  
-# XXX name too similar to SpriteGeometry, but no relation.
 class GeometrySpriteRepresentation(SpriteRepresentation):
     # draws a euclid geometry object (rectangle, circle, ellipse, ..)
     pass

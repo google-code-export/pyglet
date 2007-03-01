@@ -18,8 +18,9 @@ from pyglet.gl import glClear
 import pyglet.window
 import pyglet.window.event
 import pyglet.clock
-from pyglet.scene2d import Sprite, Image2d, FlatView
-from pyglet.scene2d.camera import FlatCamera
+from pyglet.image import load_image
+from pyglet.sprite import ImageSprite, FlatView
+from pyglet.sprite.camera import FlatCamera
 
 ball_png = os.path.join(os.path.dirname(__file__), 'ball.png')
 
@@ -28,8 +29,8 @@ class FlatSpriteTest(unittest.TestCase):
     def test_sprite(self):
         w = pyglet.window.Window(width=320, height=320)
 
-        image = Image2d.load(ball_png)
-        ball = Sprite(0, 0, 64, 64, image)
+        image = load_image(ball_png)
+        ball = ImageSprite(image)
         view = FlatView(0, 0, 320, 320, sprites=[ball])
 
         w.push_handlers(view.camera)
@@ -43,10 +44,11 @@ class FlatSpriteTest(unittest.TestCase):
 
             # move, check bounds
             ball.x += dx; ball.y += dy
-            if ball.left < 0: ball.left = 0; dx = -dx
-            elif ball.right > w.width: ball.right = w.width; dx = -dx
-            if ball.bottom < 0: ball.bottom = 0; dy = -dy
-            elif ball.top > w.height: ball.top = w.height; dy = -dy
+            g = ball.geometry
+            if g.left < 0: g.left = 0; dx = -dx
+            elif g.right > w.width: g.right = w.width; dx = -dx
+            if g.bottom < 0: g.bottom = 0; dy = -dy
+            elif g.top > w.height: g.top = w.height; dy = -dy
 
             # keep our focus in the middle of the window
             view.fx = w.width/2

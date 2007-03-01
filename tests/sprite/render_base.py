@@ -14,15 +14,16 @@ import pyglet.window
 from pyglet.window.event import *
 from pyglet.window.key import *
 import pyglet.clock
-from pyglet.scene2d import *
-from pyglet.scene2d.drawable import ScaleEffect
+from pyglet.image import load_image
+from pyglet.sprite import *
 
-ball_png = os.path.join(os.path.dirname(__file__), 'ball.png')
+ball_png = os.path.join(os.path.dirname(__file__), 'small_ball.png')
 
 class RenderBase(unittest.TestCase):
     w = None
     def init_window(self, vx, vy):
         self.w = pyglet.window.Window(width=vx, height=vy)
+        self.vx, self.vy = vx, vy
 
     def set_map(self, m, resize=False):
         if resize:
@@ -32,7 +33,7 @@ class RenderBase(unittest.TestCase):
             vx = self.w.width
             vy = self.w.height
 
-        self.view = pyglet.scene2d.FlatView(0, 0, vx, vy, layers=[m])
+        self.view = FlatView(0, 0, vx, vy, layers=[m])
 
         self.w.push_handlers(self.view.camera)
 
@@ -42,9 +43,7 @@ class RenderBase(unittest.TestCase):
     marker = None
     def show_focus(self):
         # add in a "sprite"
-        marker = Image2d.load(ball_png)
-        self.marker = Sprite(0, 0, 16, 16, marker)
-        self.marker.add_effect(ScaleEffect(.25, .25))
+        self.marker = ImageSprite(load_image(ball_png))
         self.view.sprites.append(self.marker)
 
     def run_test(self):

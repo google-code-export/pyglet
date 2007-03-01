@@ -156,8 +156,8 @@ resource
         REQUIRE                           X
         ============================== =======
 
-scene2d
-    :description: 2D scenes with tile maps and sprites.
+sprite
+    :description: 2D scenes with sprites and maps.
     :implementation:
         ============================== =======
         Component                      GENERIC

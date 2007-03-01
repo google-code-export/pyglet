@@ -1,0 +1,28 @@
+<resource>
+ <imageatlas file="tiles.png" size="32x32" >
+  <image id="tl" offset="0,64" />
+  <image id="h" offset="32,64" />
+  <image id="tr" offset="64,64" />
+  <image id="v" offset="0,32" />
+  <image id="e" offset="32,32" />
+  <image id="bl" offset="0,0" />
+  <image id="br" offset="64,0" />
+ </imageatlas>
+<rectmap id="test" tile_size="32x32">
+ <column>
+  <cell tile="bl" />
+  <cell tile="v" />
+  <cell tile="tl" />
+ </column>
+ <column>
+  <cell tile="h" />
+  <cell tile="e" />
+  <cell tile="h" />
+ </column>
+ <column>
+  <cell tile="br" />
+  <cell tile="v" />
+  <cell tile="tr" />
+ </column>
+</rectmap>
+</resource>

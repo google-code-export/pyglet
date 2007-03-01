@@ -67,7 +67,7 @@ def hexmap_factory(resource, tag):
 
     # now load the columns
     cells = []
-    m = HexMap(id, width, cells, origin)
+    m = HexMap(id, height, cells, origin)
     resource.add_resource(id, m)
     from pyglet.sprite import ImageSprite
     for i, column in enumerate(tag.getElementsByTagName('column')):
@@ -78,6 +78,7 @@ def hexmap_factory(resource, tag):
             s = ImageSprite(tile)
             s.geometry_factory = m.geometry_factory
             s.i, s.j = i, j
+            s.position = s.geometry.x, s.geometry.y
             # XXX 
             #s.blueprint = resource.handle_properties(image?)
             for name, value in resource.handle_properties(cell):
@@ -101,14 +102,14 @@ class Map(object):
 class RegularTesselationMap(Map):
     '''A class of Map that has a regular array of Cells.
     '''
-    def get_cell(self, x, y):
-        ''' Return Cell at cell pos=(x,y).
+    def get_cell(self, i, j):
+        ''' Return Cell at cell pos=(i, j).
 
         Return None if out of bounds.'''
-        if x < 0 or y < 0:
+        if i < 0 or j < 0:
             return None
         try:
-            return self.cells[x][y]
+            return self.cells[i][j]
         except IndexError:
             return None
 
@@ -163,13 +164,13 @@ class RectMap(RegularTesselationMap):
     LEFT = (-1, 0)
     RIGHT = (1, 0)
     def get_neighbor(self, cell, direction):
-        '''Get the neighbor Cell in the given direction (dx, dy) which
+        '''Get the neighbor Cell in the given direction (di, dj) which
         is one of self.UP, self.DOWN, self.LEFT or self.RIGHT.
 
         Returns None if out of bounds.
         '''
-        dx, dy = direction
-        return self.get_cell(cell.x + dx, cell.y + dy)
+        di, dj = direction
+        return self.get_cell(cell.i + di, cell.i + dj)
 
     @classmethod
     def load_xml(cls, filename, id):
@@ -260,36 +261,36 @@ class HexMap(RegularTesselationMap):
         Return None if out of bounds.
         '''
         if direction is self.UP:
-            return self.get_cell(cell.x, cell.y + 1)
+            return self.get_cell(cell.i, cell.j + 1)
         elif direction is self.DOWN:
-            return self.get_cell(cell.x, cell.y - 1)
+            return self.get_cell(cell.i, cell.j - 1)
         elif direction is self.UP_LEFT:
-            if cell.x % 2:
-                return self.get_cell(cell.x - 1, cell.y + 1)
+            if cell.i % 2:
+                return self.get_cell(cell.i - 1, cell.j + 1)
             else:
-                return self.get_cell(cell.x - 1, cell.y)
+                return self.get_cell(cell.i - 1, cell.j)
         elif direction is self.UP_RIGHT:
-            if cell.x % 2:
-                return self.get_cell(cell.x + 1, cell.y + 1)
+            if cell.i % 2:
+                return self.get_cell(cell.i + 1, cell.j + 1)
             else:
-                return self.get_cell(cell.x + 1, cell.y)
+                return self.get_cell(cell.i + 1, cell.j)
         elif direction is self.DOWN_LEFT:
-            if cell.x % 2:
-                return self.get_cell(cell.x - 1, cell.y)
+            if cell.i % 2:
+                return self.get_cell(cell.i - 1, cell.j)
             else:
-                return self.get_cell(cell.x - 1, cell.y - 1)
+                return self.get_cell(cell.i - 1, cell.j - 1)
         elif direction is self.DOWN_RIGHT:
-            if cell.x % 2:
-                return self.get_cell(cell.x + 1, cell.y)
+            if cell.i % 2:
+                return self.get_cell(cell.i + 1, cell.j)
             else:
-                return self.get_cell(cell.x + 1, cell.y - 1)
+                return self.get_cell(cell.i + 1, cell.j - 1)
         else:
             raise ValueError, 'Unknown direction %r'%direction
 
     def geometry_factory(self, sprite):
-        x = sprite.i * (self.width / 2 + self.width // 4)
-        y = sprite.j * self.height
+        x = sprite.i * (self.tw / 2 + self.tw // 4)
+        y = sprite.j * self.th
         if sprite.i % 2:
-            y += self.height // 2
-        return HexGeometry(sprite, x, j, self.tw, self.th)
+            y += self.th // 2
+        return HexGeometry(sprite, x, y, self.tw, self.th)
 

@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
-'''Testing hex map debug rendering.
+'''Testing flat map scrolling.
 
-You should see a checkered hex map.
+Press arrow keys to move view focal point (little ball) around map.
+
+You will be able to move "off" the map.
 
 Press escape or close the window to finish the test.
 '''
@@ -12,14 +14,13 @@ __version__ = '$Id$'
 
 import unittest
 from render_base import RenderBase
-import pyglet.scene2d
-from pyglet.scene2d.debug import gen_hex_map
+from pyglet.sprite.debug import gen_rect_map
 
-class HexFlatDebugTest(RenderBase):
+class FlatScrollingTest(RenderBase):
     def test_main(self):
         self.init_window(256, 256)
-        self.set_map(gen_hex_map([[{}]*10]*10, 32), resize=True)
-        self.view.allow_oob = False
+        self.set_map(gen_rect_map([[{}]*10]*10, 32, 32))
+        self.show_focus()
         self.run_test()
 
 if __name__ == '__main__':

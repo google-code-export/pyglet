@@ -1,3 +1,4 @@
+import math
 
 class SpriteGeometry(object):
     '''Defines the shape of a sprite for the purposes of aligning the

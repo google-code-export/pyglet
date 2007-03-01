@@ -8,6 +8,7 @@ from pyglet.sprite.camera import *
 from pyglet.sprite.view import *
 from pyglet.sprite.map import *
 from pyglet.sprite.representation import *
+from pyglet.sprite.geometry import *
 
 class Sprite(object):
     '''A 2d object oriented and positioned in space-time.
@@ -33,7 +34,8 @@ class Sprite(object):
  
     :Optional Parameters:
         `blueprint` : dict()
-            Values from XML file shared amongst similar Sprites.
+            Values from XML file shared amongst similar Sprites. Set as
+            attreibutes on the Sprite.
  
         TODO: scheduling
         `velocity` : property(...) # schedules an update for position
@@ -47,7 +49,9 @@ class Sprite(object):
 
         self.representation = representation
         self.collider = collider
-        self.blueprint = blueprint is not None or {}
+        if blueprint:
+            for k,v in blueprint.items():
+                setattr(self, k, v)
 
         self.time = time
         self.orientation = orientation
@@ -80,15 +84,9 @@ class Sprite(object):
         return self.geometry_factory(self)
     geometry = property(get_geometry)
  
-    def x__getattr__(self, name):
-        try:
-            return self.blueprint[name]
-        except KeyError:
-            raise AttributeError, name
-
-
 class ImageSprite(Sprite):
     '''Upon creation sets representation to an ImageSpriteRepresentation
+    (though any SpriteRepresentation is accepted if directly passed).
 
     :Parameters:
         `tint_color` : float 4-tuple
@@ -101,8 +99,7 @@ class ImageSprite(Sprite):
             collider=None, time=0, blueprint=None, velocity=(0,0),
             acceleration=(0,0), angular_velocity=0, tint_color=(1, 1, 1, 1),
             blend_color=None):
-        # XXX hmmm...
-        if isinstance(image, ImageSpriteRepresentation):
+        if isinstance(image, SpriteRepresentation):
             representation = image
         elif isinstance(image, ImageData):
             representation = ImageSpriteRepresentation.new(image.texture)

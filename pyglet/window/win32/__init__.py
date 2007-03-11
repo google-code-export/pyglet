@@ -726,8 +726,9 @@ class Win32Window(BaseWindow):
         # Prevent flicker during resize.
         return 0
 
-def _check():
-    dw = _kernel32.GetLastError()
+def _check(dw=None):
+    if dw is None:
+        dw = _kernel32.GetLastError()
     if dw != 0:
         msg = create_string_buffer(256)
         _kernel32.FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM,

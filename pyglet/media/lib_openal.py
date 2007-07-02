@@ -46,8 +46,13 @@ __version__ = '$Id$'
 import ctypes
 from ctypes import *
 from ctypes.util import find_library as _find_library
+import sys
 
-_libpath = _find_library('openal')
+if sys.platform in ('win32', 'cygwin'):
+    _libname = 'openal32'
+else:
+    _libname = 'openal'
+_libpath = _find_library(_libname)
 if not _libpath:
     raise ImportError('Could not locate openal library')
 _lib = cdll.LoadLibrary(_libpath)
@@ -75,7 +80,7 @@ ALAPI = 0 	# /usr/include/AL/al.h:59
 AL_INVALID = -1 	# /usr/include/AL/al.h:61
 AL_ILLEGAL_ENUM = 0 	# /usr/include/AL/al.h:62
 AL_ILLEGAL_COMMAND = 0 	# /usr/include/AL/al.h:63
-ALboolean = c_char 	# /usr/include/AL/al.h:70
+ALboolean = c_int 	# Better return type than c_char, as generated
 ALchar = c_char 	# /usr/include/AL/al.h:73
 ALbyte = c_char 	# /usr/include/AL/al.h:76
 ALubyte = c_ubyte 	# /usr/include/AL/al.h:79

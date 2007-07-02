@@ -47,8 +47,17 @@ from pyglet import event
 class MediaException(Exception):
     pass
 
+class CannotSeekException(MediaException):
+    pass
+
 class Source(object):
     '''An audio and/or video source.
+
+    :Ivariables:
+        `audio_properties` : dict
+            TODO
+        `video_properties` : dict
+            TODO
     '''
 
     _duration = None
@@ -82,6 +91,53 @@ class Source(object):
         player.queue(self)
         player.play()
         return player
+
+    # Internal methods that Players call on the source:
+
+    def _play(self):
+        '''Begin decoding in real-time.'''
+        pass
+
+    def _pause(self):
+        '''Pause decoding, but remain prerolled.'''
+        pass
+
+    def _stop(self):
+        '''Stop forever and clean up.'''
+        pass
+
+    def _seek(self, timestamp):
+        '''Seek to given timestamp.'''
+        raise CannotSeekException()
+
+    def _openal_get_buffer(self):
+        '''Return (buffer, length_in_secs) or (None, None) if no more data.
+        buffer must be Aluint (not just int).'''
+        raise NotImplementedError(
+            '%s does not support OpenAL.' % self.__class__.__name__)
+
+    def _directsound_fill_buffer(self, ptr1, len1, ptr2, len2):
+        '''Fill ptr1 and ptr2 up with audio data.  Returns new write pointer.
+        '''
+        raise NotImplementedError(
+            '%s does not support DirectX.' % self.__class__.__name__)
+
+    def _alsa_fill_buffer(self, alsa_info):
+        '''Fill ALSA buffer with data (interface TODO).'''
+        raise NotImplementedError(
+            '%s does not support ALSA.' % self.__class__.__name__)
+
+    def _init_texture(self, player):
+        '''Create the player's texture.'''
+        pass
+
+    def _update_texture(self, player, timestamp):
+        '''Update the texture on player.'''
+        pass
+
+    def _release_texture(self, player):
+        '''Release the player's texture.'''
+        pass
 
 class StreamingSource(Source):
     '''A source that is decoded as it is being played, and can only be
@@ -131,8 +187,8 @@ class BasePlayer(event.EventDispatcher):
 
     # Source and queuing attributes
     _source = None
-    _next_source = None
     _eos_action = EOS_NEXT
+    _playing = False
 
     # Sound and spacialisation attributes
     _volume = 1.0
@@ -232,20 +288,8 @@ class BasePlayer(event.EventDispatcher):
          :type: Source
          ''')
 
-
-    def _get_next_source(self):
-        return self._next_source
-
-    next_source = property(lambda self: self._get_next_source(),
-                      doc='''Return the source that will be played next.
-
-         Read-only.
-
-         :type: Source
-         ''')
-
     def _set_eos_action(self, action):
-        raise NotImplementedError('abtract')
+        self._eos_action = action
 
     eos_action = property(lambda self: self._eos_action,
                           _set_eos_action,
@@ -256,6 +300,20 @@ class BasePlayer(event.EventDispatcher):
         `EOS_LOOP`.
 
         :type: str
+        ''')
+
+    playing = property(lambda self: self._playing,
+                       doc='''Determine if the player state is playing.
+
+        The `playing` property is irrespective of whether or not there is
+        actually a source to play.  If `playing` is True and a source is
+        queued, it will begin playing immediately.  If `playing` is False, 
+        it is implied that the player is paused.  There is no other possible
+        state.
+
+        Read-only.
+
+        :type: bool
         ''')
 
     def _set_volume(self, volume):
@@ -607,6 +665,11 @@ if getattr(sys, 'is_epydoc', False):
         '''
 
 else:
+    if sys.platform in ('win32', 'cygwin'):
+        from pyglet.media import openal
+        openal.init()
+        Player = openal.OpenALPlayer
+    '''
     if sys.platform == 'linux2':
         from pyglet.media import gst_openal
         _device = gst_openal
@@ -625,3 +688,4 @@ else:
     dispatch_events = _device.dispatch_events
     listener = _device.listener
     _device.init()
+    '''

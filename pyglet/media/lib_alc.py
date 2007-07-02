@@ -45,8 +45,13 @@ __version__ = '$Id$'
 import ctypes
 from ctypes import *
 from ctypes.util import find_library as _find_library
+import sys
 
-_libpath = _find_library('openal')
+if sys.platform in ('win32', 'cygwin'):
+    _libname = 'openal32'
+else:
+    _libname = 'openal'
+_libpath = _find_library(_libname)
 if not _libpath:
     raise ImportError('Could not locate openal library')
 _lib = cdll.LoadLibrary(_libpath)

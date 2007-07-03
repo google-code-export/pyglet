@@ -161,3 +161,10 @@ font
         font.KERNING
         font.ITALIC_CORRECTION
 
+media
+    media-player
+        media.PLAYER_QUEUE_PLAY                 WIN
+        media.PLAYER_PLAY_QUEUE                 WIN
+        media.PLAYER_PAUSE                      WIN
+        media.PLAYER_PAUSE_QUEUE                WIN
+        media.PLAYER_EOS_NEXT                   WIN

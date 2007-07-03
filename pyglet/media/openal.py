@@ -216,11 +216,11 @@ class OpenALPlayer(BasePlayer):
 
     def queue(self, source):
         if not self._sources:
-            self._eos_buffers = [0]
             self._source_read_index = 0
             self._buffer_time = 0
             source._init_texture(self)
         self._sources.append(source)
+        self._eos_buffers.append(0)
 
     def next(self):
         if self._sources:
@@ -233,8 +233,11 @@ class OpenALPlayer(BasePlayer):
             self._sources[0]._init_texture(self)
             
     def dispatch_events(self):
-        if not self._sources:
+        if not self._sources or not self._playing:
             return
+
+        # XXX HACK
+        self._buffer_time -= time.time() - self._last_known_system_time
 
         if self._sources[0].has_audio:
             # Find out how many buffers are done
@@ -248,7 +251,6 @@ class OpenALPlayer(BasePlayer):
                 buffers = (al.ALuint * processed)()
                 al.alSourceUnqueueBuffers(self._al_source, 
                                           len(buffers), buffers)
-                self._buffer_time -= buffer_pool.release(buffers)
 
                 # Look for EOS events in the buffers that were just processed,
                 # update source queue if EOS_NEXT is selected.
@@ -282,7 +284,7 @@ class OpenALPlayer(BasePlayer):
                 # Queue this buffer onto the AL source.
                 al.alSourceQueueBuffers(self._al_source, 1, 
                                         ctypes.byref(buffer))
-                self._eos_buffers[-1] += 1
+                self._eos_buffers[self._source_read_index] += 1
                 self._buffer_time += buffer_time
                 
                 # Start OpenAL playing if this player is playing, and if
@@ -295,7 +297,6 @@ class OpenALPlayer(BasePlayer):
                     self._al_playing = True
             else:
                 # No more buffers from source, check eos behaviour
-                self._eos_buffers.append(0)
                 if self._eos_action == self.EOS_NEXT:
                     self._source_read_index += 1
                     try:
@@ -386,6 +387,7 @@ class OpenALPlayer(BasePlayer):
 
         if self._al_playing:
             al.alSourcePause(self._al_source)
+            self._al_playing = False
 
     def seek(self, timestamp):
         if self._sources:

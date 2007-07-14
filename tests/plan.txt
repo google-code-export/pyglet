@@ -163,8 +163,8 @@ font
 
 media
     media-player
-        media.PLAYER_QUEUE_PLAY                 WIN
-        media.PLAYER_PLAY_QUEUE                 WIN
-        media.PLAYER_PAUSE                      WIN
-        media.PLAYER_PAUSE_QUEUE                WIN
-        media.PLAYER_EOS_NEXT                   WIN
+        media.PLAYER_QUEUE_PLAY                 DEVELOPER
+        media.PLAYER_PLAY_QUEUE                 DEVELOPER
+        media.PLAYER_PAUSE                      DEVELOPER
+        media.PLAYER_PAUSE_QUEUE                DEVELOPER
+        media.PLAYER_EOS_NEXT                   DEVELOPER

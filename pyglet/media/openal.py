@@ -104,13 +104,13 @@ def have_extension(extension):
     return extension in get_extensions()
 
 class BufferInformation(object):
-    __slots__ = ['timestamp', 'length', 'release_after_use']
+    __slots__ = ['timestamp', 'length', 'owner', 'is_eos']
 
 class BufferPool(list):
     def __init__(self):
         self.info = {}
 
-    def get(self, timestamp, length, release_after_use=True):
+    def get(self, timestamp, length, owner, is_eos=False):
         if not self:
             buffer = al.ALuint()
             al.alGenBuffers(1, buffer)
@@ -119,25 +119,25 @@ class BufferPool(list):
         else:
             buffer = al.ALuint(self.pop(0))
             info = self.info[buffer.value]
-        info.timestamp = timestamp
-        info.length = length
-        info.release_after_use = release_after_use
+        info.timestamp = timestamp  # for video sync
+        info.length = length        # in seconds
+        info.owner = owner          # Source that owns it, or buffer_pool
+        info.is_eos = is_eos        # True if last buffer for this source
         return buffer
 
     def info(self, buffer):
         return self.info[buffer]
 
-    def release(self, buffers):
-        '''Release a list of buffers.  They are only released if they 
-        are marked 'release_after_use'.  Returns the total length of audio
-        contained in the buffers.'''
-        length = 0
-        for buffer in buffers:
-            info = self.info[buffer]
-            length += info.length
-            if info.release_after_use:
-                self.append(buffer)
-        return length
+    def release(self, buffer):
+        '''Players should call this method when a buffer is finished
+        playing.'''
+        self.info[buffer].owner._openal_release_buffer(buffer)
+
+    def _openal_release_buffer(self, buffer):
+        '''Release a buffer.  Sources can set the buffer owner to be the
+        buffer pool if the buffer can be released as soon it is played.
+        '''
+        self.append(buffer)
 
     def __del__(self, al=al):
         if al and al.ALuint and al.alDeleteBuffers:
@@ -154,6 +154,10 @@ _format_map = {
 }
 def get_format(channels, depth):
     return _format_map[channels, depth]
+
+class SourceInfo(object):
+    def __init__(self, source):
+        self.source = source
 
 class OpenALPlayer(BasePlayer):
     #: Seconds ahead to buffer audio
@@ -194,14 +198,8 @@ class OpenALPlayer(BasePlayer):
         # buffers
         self._source_read_index = 0
 
-        # List of number of queued buffers between each EOS.  e.g.
-        # [1, 3] means there is 1 more buffer until EOS, then another 3 until
-        # the next EOS (on the next source if EOS_NEXT, otherwise on the same
-        # source if EOS_LOOP)
-        self._eos_buffers = []
-
-        # Total seconds currently buffered
-        self._buffer_time = 0.
+        # List of BufferInformation
+        self._queued_buffers = []
 
         # If not playing, must be paused (irrespective of whether or not
         # sources are queued).
@@ -217,10 +215,8 @@ class OpenALPlayer(BasePlayer):
     def queue(self, source):
         if not self._sources:
             self._source_read_index = 0
-            self._buffer_time = 0
             source._init_texture(self)
         self._sources.append(source)
-        self._eos_buffers.append(0)
 
     def next(self):
         if self._sources:
@@ -236,9 +232,9 @@ class OpenALPlayer(BasePlayer):
         if not self._sources or not self._playing:
             return
 
-        # XXX HACK
-        self._buffer_time -= time.time() - self._last_known_system_time
-
+        # Calculate once only for this method.
+        self_time = self.time
+        
         if self._sources[0].has_audio:
             # Find out how many buffers are done
             processed = al.ALint()
@@ -252,40 +248,43 @@ class OpenALPlayer(BasePlayer):
                 al.alSourceUnqueueBuffers(self._al_source, 
                                           len(buffers), buffers)
 
-                # Look for EOS events in the buffers that were just processed,
-                # update source queue if EOS_NEXT is selected.
-                while processed:
-                    if processed >= self._eos_buffers[0]:
-                        processed -= self._eos_buffers.pop(0)
+                # If any buffers were EOS buffers, dispatch appropriate
+                # event.
+                for buffer in buffers:
+                    info = self._queued_buffers.pop(0)
+                    assert info is buffer_pool.info[buffer]
+                    if info.is_eos:
                         if self._eos_action == self.EOS_NEXT:
                             self.next()
                         self.dispatch_event('on_eos')
-                    else:
-                        self._eos_buffers[0] -= processed
-                        processed = 0
+                    buffer_pool.release(buffer)
         else:
             # Check for EOS on silent source
-            if self.time > self._sources[0].duration:
-                self._eos_buffers.pop(0)
+            if self_time > self._sources[0].duration:
                 if self._eos_action == self.EOS_NEXT:
                     self.next()
-                
                 self.dispatch_event('on_eos')
+
+        # Determine minimum duration of audio already buffered (current buffer
+        # is ignored, as this could be just about to be dequeued).
+        buffer_time = sum([b.length for b in self._queued_buffers[1:]])
 
         # Ensure audio buffers are full
         try:
             source = self._sources[self._source_read_index]
         except IndexError:
             source = None
-        while source and self._buffer_time < self._min_buffer_time:
+        while source and buffer_time < self._min_buffer_time:
             if source.has_audio:
-                buffer, buffer_time = source._openal_get_buffer()
+                buffer = source._openal_get_buffer()
             if source.has_audio and buffer is not None:
+                info = buffer_pool.info[buffer.value]
+                self._queued_buffers.append(info)
+                buffer_time += info.length
+
                 # Queue this buffer onto the AL source.
                 al.alSourceQueueBuffers(self._al_source, 1, 
                                         ctypes.byref(buffer))
-                self._eos_buffers[self._source_read_index] += 1
-                self._buffer_time += buffer_time
                 
                 # Start OpenAL playing if this player is playing, and if
                 # this source that we're buffering is the current source
@@ -301,7 +300,7 @@ class OpenALPlayer(BasePlayer):
                     self._source_read_index += 1
                     try:
                         source = self._sources[self._source_read_index]
-                        source._play()
+                        source._play() # Preroll source ahead of buffering
                     except IndexError:
                         source = None
                 elif self._eos_action == self.EOS_LOOP:
@@ -313,8 +312,7 @@ class OpenALPlayer(BasePlayer):
 
         # Update video texture
         if self._texture:
-            timestamp = self._get_time()
-            self._sources[0]._update_texture(self, timestamp)
+            self._sources[0]._update_texture(self, self_time)
 
     def _get_time(self):
         if not self._sources:

@@ -111,10 +111,14 @@ class Source(object):
         raise CannotSeekException()
 
     def _openal_get_buffer(self):
-        '''Return (buffer, length_in_secs) or (None, None) if no more data.
-        buffer must be Aluint (not just int).'''
+        '''Return buffer, or None if no more buffers.'''
         raise NotImplementedError(
             '%s does not support OpenAL.' % self.__class__.__name__)
+
+    def _openal_release_buffer(self, buffer):
+        '''Release a buffer.'''
+        raise RuntimeError(
+            '%s does not manage OpenAL buffers.' % self.__class__.__name__)
 
     def _directsound_fill_buffer(self, ptr1, len1, ptr2, len2):
         '''Fill ptr1 and ptr2 up with audio data.  Returns new write pointer.
@@ -665,10 +669,12 @@ if getattr(sys, 'is_epydoc', False):
         '''
 
 else:
-    if sys.platform in ('win32', 'cygwin'):
-        from pyglet.media import openal
-        openal.init()
-        Player = openal.OpenALPlayer
+    # Currently audio playback is through OpenAL on all platforms; in 
+    # the future alternative drivers using ALSA or DirectSound may be
+    # implemented.
+    from pyglet.media import openal
+    openal.init()
+    Player = openal.OpenALPlayer
     '''
     if sys.platform == 'linux2':
         from pyglet.media import gst_openal

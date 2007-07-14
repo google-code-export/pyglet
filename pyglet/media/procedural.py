@@ -24,7 +24,7 @@ class ProceduralSource(Source):
 
     def _openal_get_buffer(self):
         if self._played:
-            return None, None
+            return None
         sample_rate = self.audio_properties['sample_rate']
         sample_size = self.audio_properties['sample_size']
         bytes_per_sample = sample_size >> 3
@@ -34,11 +34,14 @@ class ProceduralSource(Source):
         }[sample_size]
         bytes = int(bytes_per_sample * self._duration * sample_rate)
         data = self._get_data(bytes, sample_rate, bytes_per_sample)
-        buffer = buffer_pool.get(0, self._duration)
+        buffer = buffer_pool.get(0, self._duration, buffer_pool, True)
         al.alBufferData(buffer, format, data, bytes, sample_rate)
 
         self._played = True
-        return buffer, self._duration
+        return buffer
+
+    # No implementation of _openal_release_buffer, as buffer_pool manages
+    # all procedural buffers.
 
     def _seek(self, timestamp):
         if timestamp == 0:

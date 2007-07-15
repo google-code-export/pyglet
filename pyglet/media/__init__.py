@@ -47,23 +47,52 @@ from pyglet import event
 class MediaException(Exception):
     pass
 
+class MediaFormatException(Exception):
+    pass
+
 class CannotSeekException(MediaException):
     pass
+
+class AudioFormat(object):
+    def __init__(self, channels, sample_size, sample_rate):
+        self.channels = channels
+        self.sample_size = sample_size
+        self.sample_rate = sample_rate
+        
+        # Convenience
+        self.bytes_per_sample = (sample_size >> 3) * channels
+        self.bytes_per_second = self.bytes_per_sample * sample_rate
+
+class AudioData(object):
+    def __init__(self, data, length, timestamp, duration, is_eos=False):
+        self.data = data
+        self.length = length
+        self.timestamp = timestamp
+        self.duration = duration
+        self.is_eos = is_eos
+
+class VideoFormat(object):
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+
 
 class Source(object):
     '''An audio and/or video source.
 
     :Ivariables:
-        `audio_properties` : dict
-            TODO
-        `video_properties` : dict
-            TODO
+        `audio_format` : `AudioFormat`
+            Format of the audio in this source, or None if the source is
+            silent.
+        `video_format` : `VideoFormat`
+            Format of the video in this source, or None if there is no
+            video.
     '''
 
     _duration = None
     
-    has_audio = False
-    has_video = False
+    audio_format = None
+    video_format = None
 
     def _get_duration(self):
         return self._duration
@@ -110,26 +139,18 @@ class Source(object):
         '''Seek to given timestamp.'''
         raise CannotSeekException()
 
-    def _openal_get_buffer(self):
-        '''Return buffer, or None if no more buffers.'''
-        raise NotImplementedError(
-            '%s does not support OpenAL.' % self.__class__.__name__)
+    def _get_audio_data(self, bytes):
+        '''Get next packet of audio data.
 
-    def _openal_release_buffer(self, buffer):
-        '''Release a buffer.'''
-        raise RuntimeError(
-            '%s does not manage OpenAL buffers.' % self.__class__.__name__)
+        :Parameters:
+            `bytes` : int
+                Maximum number of bytes of data to return.
 
-    def _directsound_fill_buffer(self, ptr1, len1, ptr2, len2):
-        '''Fill ptr1 and ptr2 up with audio data.  Returns new write pointer.
+        :rtype: `AudioData`
+        :return: Next packet of audio data, or None if there is no (more)
+            data.
         '''
-        raise NotImplementedError(
-            '%s does not support DirectX.' % self.__class__.__name__)
-
-    def _alsa_fill_buffer(self, alsa_info):
-        '''Fill ALSA buffer with data (interface TODO).'''
-        raise NotImplementedError(
-            '%s does not support ALSA.' % self.__class__.__name__)
+        return None
 
     def _init_texture(self, player):
         '''Create the player's texture.'''

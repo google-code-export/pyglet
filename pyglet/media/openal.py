@@ -160,8 +160,12 @@ class SourceInfo(object):
         self.source = source
 
 class OpenALPlayer(BasePlayer):
-    #: Seconds ahead to buffer audio
-    _min_buffer_time = .5
+    #: Seconds ahead to buffer audio.  Keep small for low latency, but large
+    #: enough to avoid underruns. (0.05 is the minimum for my 2.2 GHz Linux)
+    _min_buffer_time = 0.3
+
+    #: Maximum size of an OpenAL buffer, in bytes.  TODO: use OpenAL maximum
+    _max_buffer_size = 65536
 
     def __init__(self):
         super(OpenALPlayer, self).__init__()
@@ -218,6 +222,18 @@ class OpenALPlayer(BasePlayer):
             source._init_texture(self)
         self._sources.append(source)
 
+        # Determine OpenAL format of source audio data.
+        if source.audio_format:
+            source.al_format = {
+                (8, 1): al.AL_FORMAT_MONO8,
+                (16, 1): al.AL_FORMAT_MONO16,
+                (8, 2): al.AL_FORMAT_STEREO8,
+                (16, 2): al.AL_FORMAT_STEREO16
+            }.get((source.audio_format.sample_size, 
+                   source.audio_format.channels), None)
+        else:
+            source.al_format = None
+
     def next(self):
         if self._sources:
             old_source = self._sources.pop(0)
@@ -235,12 +251,19 @@ class OpenALPlayer(BasePlayer):
         # Calculate once only for this method.
         self_time = self.time
         
-        if self._sources[0].has_audio:
+        # Update state of AL source
+        state = al.ALint()
+        al.alGetSourcei(self._al_source, al.AL_SOURCE_STATE, state)
+        self._al_playing = state.value == al.AL_PLAYING
+
+        if self._sources[0].al_format:
             # Find out how many buffers are done
             processed = al.ALint()
             al.alGetSourcei(self._al_source, 
                             al.AL_BUFFERS_PROCESSED, processed)
             processed = processed.value
+            queued = al.ALint()
+            al.alGetSourcei(self._al_source, al.AL_BUFFERS_QUEUED, queued)
 
             # Release spent buffers
             if processed:
@@ -258,6 +281,7 @@ class OpenALPlayer(BasePlayer):
                             self.next()
                         self.dispatch_event('on_eos')
                     buffer_pool.release(buffer)
+
         else:
             # Check for EOS on silent source
             if self_time > self._sources[0].duration:
@@ -275,9 +299,24 @@ class OpenALPlayer(BasePlayer):
         except IndexError:
             source = None
         while source and buffer_time < self._min_buffer_time:
-            if source.has_audio:
-                buffer = source._openal_get_buffer()
-            if source.has_audio and buffer is not None:
+            # Read next packet of audio data
+            max_bytes = int(
+                self._min_buffer_time * source.audio_format.bytes_per_second)
+            max_bytes = min(max_bytes, self._max_buffer_size)
+            audio_data = source._get_audio_data(max_bytes)
+
+            # If there is audio data, create and queue a buffer
+            if audio_data and source.al_format:
+                buffer = buffer_pool.get(audio_data.timestamp,
+                                         audio_data.duration,
+                                         buffer_pool,
+                                         audio_data.is_eos)
+                al.alBufferData(buffer, 
+                                source.al_format,
+                                audio_data.data,
+                                audio_data.length,
+                                source.audio_format.sample_rate)
+                # TODO consolidate info and audio_data
                 info = buffer_pool.info[buffer.value]
                 self._queued_buffers.append(info)
                 buffer_time += info.length
@@ -286,16 +325,8 @@ class OpenALPlayer(BasePlayer):
                 al.alSourceQueueBuffers(self._al_source, 1, 
                                         ctypes.byref(buffer))
                 
-                # Start OpenAL playing if this player is playing, and if
-                # this source that we're buffering is the current source
-                # (i.e., not some noisy source queued after a silent source).
-                if (self._playing and 
-                    not self._al_playing and
-                    self._source_read_index == 0):
-                    al.alSourcePlay(self._al_source)
-                    self._al_playing = True
             else:
-                # No more buffers from source, check eos behaviour
+                # No more data from source, check eos behaviour
                 if self._eos_action == self.EOS_NEXT:
                     self._source_read_index += 1
                     try:
@@ -309,16 +340,28 @@ class OpenALPlayer(BasePlayer):
                     source = None
                 else:
                     assert False, 'Invalid eos_action'
+                    source = None
 
         # Update video texture
         if self._texture:
             self._sources[0]._update_texture(self, self_time)
 
+
+        # Ensure the AL source is playing (if there is a buffer underrun
+        # this restarts the AL source).  This needs to be at the end of the
+        # function to ensure it catches newly queued sources without needing
+        # a second iteration of dispatch_events.
+        if (self._sources and self._sources[0].al_format and
+            self._queued_buffers and
+            self._playing and not self._al_playing):
+            al.alSourcePlay(self._al_source)
+            self._al_playing = True
+
     def _get_time(self):
         if not self._sources:
             return 0.0
         
-        if self._sources[0].has_audio:
+        if self._sources[0].audio_format:
             # Add current buffer timestamp to sample offset within that
             # buffer.
             buffer = al.ALint()
@@ -368,7 +411,7 @@ class OpenALPlayer(BasePlayer):
         if not self._sources:
             return
 
-        if self._sources[0].has_audio:
+        if self._sources[0].al_format:
             buffers = al.ALint()
             al.alGetSourcei(self._al_source, al.AL_BUFFERS_QUEUED, buffers)
             if buffers.value:

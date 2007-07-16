@@ -41,6 +41,7 @@ __docformat__ = 'restructuredtext'
 __version__ = '$Id$'
 
 import sys
+import StringIO
 
 from pyglet import event
 
@@ -139,6 +140,12 @@ class Source(object):
         '''Seek to given timestamp.'''
         raise CannotSeekException()
 
+    def _get_queue_source(self):
+        '''Return the `Source` to be used as the queue source for a player.
+
+        Default implementation returns self.'''
+        return self
+
     def _get_audio_data(self, bytes):
         '''Get next packet of audio data.
 
@@ -180,6 +187,15 @@ class StreamingSource(Source):
         :type: bool
         ''')
 
+    def _get_queue_source(self):
+        '''Return the `Source` to be used as the queue source for a player.
+
+        Default implementation returns self.'''
+        if self._is_queued:
+            raise MediaException('This source is already queued on a player.')
+        self._is_queued = True
+        return self
+
 class StaticSource(Source):
     '''A source that has been completely decoded in memory.  This source can
     be queued onto multiple players any number of times.
@@ -193,7 +209,71 @@ class StaticSource(Source):
                 The source to read and decode audio and video data from.
 
         '''
+        if source.video_format:
+            raise NotImplementedException(
+                'Static sources not supported for video yet.')
 
+        self.audio_format = source.audio_format
+        if not self.audio_format:
+            return
+
+        # TODO enable time-insensitive playback 
+        source.play()
+
+        # Arbitrary: number of bytes to request at a time.
+        buffer_size = 1 << 20 # 1 MB
+
+        # Naive implementation.  Driver-specific implementations may override
+        # to load static audio data into device (or at least driver) memory. 
+        data = StringIO.StringIO()
+        while True:
+            audio_data = source._get_audio_data(buffer_size)
+            if not audio_data:
+                break
+            data.write(audio_data.data)
+        self._data = data.getvalue()
+
+    def _get_queue_source(self):
+        return StaticMemorySource(self._data, self.audio_format)
+
+    def _get_audio_data(self, bytes):
+        raise RuntimeError('StaticSource cannot be queued.')
+
+class StaticMemorySource(StaticSource):
+    '''Helper class for default implementation of `StaticSource`.  Do not use
+    directly.'''
+
+    def __init__(self, data, audio_format):
+        self._file = StringIO.StringIO(data)
+        self._max_offset = len(data)
+        self.audio_format = audio_format
+
+    def _seek(self, timestamp):
+        offset = int(timestamp * self.audio_format.bytes_per_second)
+
+        # Align to sample
+        if self.audio_format.bytes_per_sample == 2:
+            offset &= 0xfffffffe
+        elif self.audio_foramt.bytes_per_sample == 4:
+            offset &= 0xfffffffc
+
+        self._file.seek(offset)
+
+    def _get_audio_data(self, bytes):
+        offset = self._file.tell()
+        timestamp = float(offset) / self.audio_format.bytes_per_second
+
+        data = self._file.read(bytes)
+        if not data:
+            return None
+
+        duration = float(len(data)) / self.audio_format.bytes_per_second
+        is_eos = self._file.tell() == self._max_offset
+        return AudioData(data,
+                         len(data),
+                         timestamp,
+                         duration,
+                         is_eos)
 
 class BasePlayer(event.EventDispatcher):
     '''A sound and/or video player.
@@ -664,7 +744,6 @@ if getattr(sys, 'is_epydoc', False):
             :type: str
             ''')
                               
-
     def load(filename, file=None, streaming=True):
         '''Load a source.
 
@@ -696,23 +775,16 @@ else:
     from pyglet.media import openal
     openal.init()
     Player = openal.OpenALPlayer
-    '''
-    if sys.platform == 'linux2':
-        from pyglet.media import gst_openal
-        _device = gst_openal
-    elif sys.platform == 'darwin':
-        from pyglet.media import quicktime
-        _device = quicktime
-    elif sys.platform in ('win32', 'cygwin'):
-        from pyglet.media import directshow
-        _device = directshow
-    else:
-        raise ImportError('pyglet.media not yet supported on %s' % sys.platform)
+    ManagedSoundPlayer = openal.OpenALManagedPlayer
+    listener = openal.listener
+    dispatch_events = openal.dispatch_events
 
-    load = _device.load
-    Player = _device.Player
-    ManagedSoundPlayer = _device.ManagedSoundPlayer
-    dispatch_events = _device.dispatch_events
-    listener = _device.listener
-    _device.init()
-    '''
+# TODO: port platform media readers to the new design.  In the meantime,
+# use Python WAVE loader only.
+def load(filename, file=None, streaming=True):
+    from pyglet.media import riff
+    source = riff.WaveSource(filename, file)
+    if not streaming:
+        source = StaticSource(source)
+    return source
+

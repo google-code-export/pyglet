@@ -47,7 +47,8 @@ __version__ = '$Id$'
 # http://www.borg.com/~jglatt/tech/wave.htm
 # http://www.sonicspot.com/guide/wavefiles.html
 
-from pyglet.media import Source, MediaFormatException, AudioData, AudioFormat
+from pyglet.media import StreamingSource, AudioData, AudioFormat
+from pyglet.media import MediaFormatException
 from pyglet.media.openal import buffer_pool
 from pyglet.media import lib_openal as al
 
@@ -182,7 +183,7 @@ class WaveForm(RIFFForm):
             if isinstance(chunk, WaveDataChunk):
                 return chunk
 
-class WaveSource(Source):
+class WaveSource(StreamingSource):
     def __init__(self, filename, file=None):
         if file is None:
             file = open(filename, 'rb')

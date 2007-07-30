@@ -77,7 +77,6 @@ class VideoFormat(object):
         self.width = width
         self.height = height
 
-
 class Source(object):
     '''An audio and/or video source.
 
@@ -782,8 +781,12 @@ else:
 # TODO: port platform media readers to the new design.  In the meantime,
 # use Python WAVE loader only.
 def load(filename, file=None, streaming=True):
+    from pyglet.media import avcodecs
+    source = avcodecs.AvcodecsSource(filename, file)
+    '''
     from pyglet.media import riff
     source = riff.WaveSource(filename, file)
+    '''
     if not streaming:
         source = StaticSource(source)
     return source

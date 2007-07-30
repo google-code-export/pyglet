@@ -45,6 +45,7 @@ from pyglet.media import (MediaFormatException, StreamingSource,
 #av = pyglet.lib.load_library('/home/alex/projects/avcodecs/libavcodecs.so.1.0')
 
 from pyglet import gl
+from pyglet.gl import gl_info
 from pyglet import image
 
 import ctypes
@@ -307,10 +308,15 @@ class AvcodecsSource(StreamingSource):
 
         width = self.video_format.width
         height = self.video_format.height
-        texture = image.Texture.create_for_size(
-            gl.GL_TEXTURE_2D, width, height, internalformat=gl.GL_RGB)
-        if texture.width != width or texture.height != height:
-            texture = texture.get_region(0, 0, width, height)
+        if gl_info.have_extension('GL_ARB_texture_rectangle'):
+            texture = image.Texture.create_for_size(
+                gl.GL_TEXTURE_RECTANGLE_ARB, width, height,
+                internalformat=gl.GL_RGB)
+        else:
+            texture = image.Texture.create_for_size(
+                gl.GL_TEXTURE_2D, width, height, internalformat=gl.GL_RGB)
+            if texture.width != width or texture.height != height:
+                texture = texture.get_region(0, 0, width, height)
         player._texture = texture
 
         # Flip texture coords (good enough for simple apps).
@@ -324,7 +330,7 @@ class AvcodecsSource(StreamingSource):
         if self._next_video_image:
             # A frame is ready, is it time to show?
             if timestamp >= self._next_video_timestamp:
-                player._texture.owner.blit_into(self._next_video_image, 0, 0, 0)
+                player._texture.blit_into(self._next_video_image, 0, 0, 0)
                 self._next_video_image = None
             else:
                 return
@@ -348,7 +354,7 @@ class AvcodecsSource(StreamingSource):
         self._next_video_image = \
             image.ImageData(width, height, 'RGB', buffer, pitch.value)
         if timestamp >= self._next_video_timestamp:
-            player._texture.owner.blit_into(self._next_video_image, 0, 0, 0)
+            player._texture.blit_into(self._next_video_image, 0, 0, 0)
             self._next_video_image = None
 
     def _release_texture(self, player):

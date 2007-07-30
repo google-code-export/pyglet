@@ -305,13 +305,14 @@ class OpenALPlayer(BasePlayer):
             source = None
         while source and buffer_time < self._min_buffer_time:
             # Read next packet of audio data
-            max_bytes = int(
-                self._min_buffer_time * source.audio_format.bytes_per_second)
-            max_bytes = min(max_bytes, self._max_buffer_size)
-            audio_data = source._get_audio_data(max_bytes)
+            if source.al_format:
+                max_bytes = int(
+                  self._min_buffer_time * source.audio_format.bytes_per_second)
+                max_bytes = min(max_bytes, self._max_buffer_size)
+                audio_data = source._get_audio_data(max_bytes)
 
             # If there is audio data, create and queue a buffer
-            if audio_data and source.al_format:
+            if source.al_format and audio_data:
                 buffer = buffer_pool.get(audio_data.timestamp,
                                          audio_data.duration,
                                          buffer_pool,
@@ -423,7 +424,6 @@ class OpenALPlayer(BasePlayer):
                 al.alSourcePlay(self._al_source)
                 self._al_playing = True
         self._last_known_system_time = time.time()
-        self._last_known_timestamp = time.time() - self._last_known_timestamp
 
     def pause(self):
         self._playing = False

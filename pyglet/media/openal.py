@@ -247,7 +247,13 @@ class OpenALPlayer(BasePlayer):
             self._sources[0]._init_texture(self)
             
     def dispatch_events(self):
-        if not self._sources or not self._playing:
+        if not self._sources:
+            return
+            
+        if not self._playing:
+            # If paused, just update the video texture.
+            if self._texture:
+                self._sources[0]._update_texture(self, self.time)
             return
 
         # Calculate once only for this method.
@@ -366,6 +372,9 @@ class OpenALPlayer(BasePlayer):
     def _get_time(self):
         if not self._sources:
             return 0.0
+
+        if not self._playing:
+            return self._last_known_timestamp
         
         if self._sources[0].audio_format:
             # Add current buffer timestamp to sample offset within that

@@ -204,9 +204,6 @@ class AvcodecsSource(StreamingSource):
         self._buffered_packets = []
 
         self._buffer_streams = []
-        if self.video_format:
-            self._buffer_streams.append(self._video_stream_index)
-
         if self.audio_format:
             self._audio_packet_ptr = 0
             self._audio_packet_size = 0
@@ -217,8 +214,10 @@ class AvcodecsSource(StreamingSource):
             self._next_audio_data = self._get_next_audio_data()
             
         if self.video_format:
+            self._buffer_streams.append(self._video_stream_index)
             self._next_video_image = None
             self._next_video_timestamp = -1
+            self._force_next_video_image = True
 
     def __del__(self):
         try:
@@ -231,8 +230,10 @@ class AvcodecsSource(StreamingSource):
             pass
 
     def _seek(self, timestamp):
-        av.avcodecs_file_seek(self._file, timestamp_to_avcodecs(timestamp))
+        av.avcodecs_seek_file(self._file, timestamp_to_avcodecs(timestamp))
         self._buffered_packets = []
+        self._next_video_image = None
+        self._force_next_video_image = True
 
     def _get_packet_for_stream(self, stream_index):
         # See if a packet has already been buffered
@@ -353,9 +354,11 @@ class AvcodecsSource(StreamingSource):
 
         self._next_video_image = \
             image.ImageData(width, height, 'RGB', buffer, pitch.value)
-        if timestamp >= self._next_video_timestamp:
+        if (timestamp >= self._next_video_timestamp or
+            self._force_next_video_image):
             player._texture.blit_into(self._next_video_image, 0, 0, 0)
             self._next_video_image = None
+            self._force_next_video_image = False
 
     def _release_texture(self, player):
         if player._texture:

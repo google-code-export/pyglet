@@ -49,7 +49,7 @@ from pyglet.gl import gl_info
 from pyglet import image
 
 import ctypes
-av = ctypes.cdll.LoadLibrary('/home/alex/projects/avcodecs/libavcodecs.so.1.0')
+av = ctypes.cdll.LoadLibrary('/home/alex/projects/avcodecs/libavcodecs.so.1')
 
 Timestamp = ctypes.c_int64
 
@@ -83,6 +83,8 @@ class _AvcodecsStreamInfoVideo(ctypes.Structure):
     _fields_ = [
         ('width', ctypes.c_uint),
         ('height', ctypes.c_uint),
+        ('sample_aspect_num', ctypes.c_int),
+        ('sample_aspect_den', ctypes.c_int),
     ]
 
 class _AvcodecsStreamInfoAudio(ctypes.Structure):
@@ -182,6 +184,10 @@ class AvcodecsSource(StreamingSource):
                 self.video_format = VideoFormat(
                     width=info.u.video.width,
                     height=info.u.video.height)
+                if info.u.video.sample_aspect_num != 0:
+                    self.video_format.sample_aspect = (
+                        float(info.u.video.sample_aspect_num) /
+                            info.u.video.sample_aspect_den)
                 self._video_stream = stream
                 self._video_stream_index = i
 
@@ -323,6 +329,13 @@ class AvcodecsSource(StreamingSource):
         # Flip texture coords (good enough for simple apps).
         bl, br, tr, tl = player._texture.tex_coords
         player._texture.tex_coords = tl, tr, br, bl
+
+        # XXX HACK Change texture size to account for sample aspect
+        if self.video_format.sample_aspect > 1.0:
+            player._texture.width *= self.video_format.sample_aspect
+        elif self.video_format.sample_aspect < 1.0:
+            player._texture.height /= self.video_format.sample_aspect
+        print player._texture.width, player._texture.height
 
     def _update_texture(self, player, timestamp):
         if not self.video_format:

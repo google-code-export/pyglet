@@ -73,9 +73,10 @@ class AudioData(object):
         self.is_eos = is_eos
 
 class VideoFormat(object):
-    def __init__(self, width, height):
+    def __init__(self, width, height, sample_aspect=1.0):
         self.width = width
         self.height = height
+        self.sample_aspect = sample_aspect
 
 class Source(object):
     '''An audio and/or video source.

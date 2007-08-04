@@ -193,6 +193,7 @@ class AvcodecsSource(StreamingSource):
 
             elif (info.type == AVCODECS_STREAM_TYPE_AUDIO and
                   info.u.audio.sample_size in (8, 16) and
+                  info.u.audio.channels in (1, 2) and 
                   not self._audio_stream):
                 self.audio_format = AudioFormat(
                     channels=info.u.audio.channels,
@@ -200,7 +201,6 @@ class AvcodecsSource(StreamingSource):
                     sample_rate=info.u.audio.sample_rate)
                 self._audio_stream = stream
                 self._audio_stream_index = i
-
             else:
                 av.avcodecs_close_stream(stream)
 

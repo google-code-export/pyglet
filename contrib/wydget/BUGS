@@ -1,0 +1,58 @@
+KNOWN BUGS
+----------
+
+- NO DOCUMENTATION
+- VERY LITTLE CODE DOCUMENTATION
+- assets are poorly-located for packaging
+- border model should be fixed so border doesn't automagic padding
+- top-left pixel of any border not rendered
+- Sliders:
+  . slider clicks in bar result in rounding error during move
+  . sliders in inner frame in test_frame.xml are misbehaving
+- Tables:
+  . table columns don't truncate
+  . also, tables are stupidly slow
+- Dragging:
+  . dragged elements should be rendered on top of everything else 
+- Labels:
+  . XHTML labels will just be truncated when they don't fit a texture
+  . XHTML rendered to texture sometimes has white border at bottom
+- Selection Lists:
+  . oh yeah, selection lists are slow too
+- Buttons:
+  . text weights for button-on-image are clearly different to -on-rect()
+  . <ah> right-hand border of text in test_button not rendered
+- File Dialog:
+  . file dialog doesn't understand ~
+  . file dialog needs to understand dir "foo" == "foo/"
+- Menus:
+  . text in test_menu is blurry
+- Movies:
+  . <ah> test_movie crashes when movie finishes
+  . <ah> cannot open another movie once first movie has started
+    (rj can't reproduce this)
+- Drawer:
+  . buttons in test_drawer have an extra line of white to the right of the
+    border
+  . <ah> overdraw inconsistency between drawers and their buttons
+  . <ah> can see individual elements of drawer move during animation (probably
+    subpixel positioned)
+- Text Input:
+  . text input scrolling always wants to be as left as possible, rather than
+    keeping the current viewport
+  . text input cursor is lost at far right 
+
+
+KNOWN AREAS OF REWRITING
+------------------------
+
+Nothing's resizeable, and it all needs to be.
+
+The style module and the way XML files are styled will be overhauled at
+some point. The current styling of elements is unlikely to change
+significantly though. Never say never, of course.
+
+The table implementation is terrible.
+
+Z positioning is largely ignored or otherwise abused.
+

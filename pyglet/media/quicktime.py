@@ -44,13 +44,14 @@ import math
 import sys
 import re
 
+import pyglet.lib
 from pyglet import image
 from pyglet.media import Sound, Video, Medium, MediaException
 from pyglet.media import lib_openal as al
 from pyglet.media import openal
 from pyglet import window
 from pyglet.window.carbon import _create_cfstring, _oscheck
-from pyglet.window.carbon import carbon, quicktime, _get_framework
+from pyglet.window.carbon import carbon, quicktime
 from pyglet.window.carbon.constants import _name, noErr
 from pyglet.window.carbon.types import Rect, Boolean
 
@@ -60,7 +61,8 @@ from pyglet.gl import agl
 from pyglet.gl import gl_info
 
 try:
-    corevideo = _get_framework('CoreVideo')
+    corevideo = pyglet.lib.load_library(
+        framework='/System/Library/Frameworks/CoreVideo.framework')
 except ImportError:
     corevideo = None
 
@@ -179,6 +181,7 @@ kMovieLoadStateComplete       = 100000
 
 k16BE555PixelFormat = 0x00000010
 k32ARGBPixelFormat = 0x00000020
+k32BGRAPixelFormat = _name('BGRA')
 
 quicktime.GetMovieTime.restype = ctypes.c_long
 quicktime.GetMovieDuration.restype = ctypes.c_long
@@ -504,7 +507,7 @@ class QuickTimeCoreVideoStreamingVideo(Video):
                 (bottom_right[0], bottom_right[1], 0),
                 (top_right[0], top_right[1], 0),
                 (top_left[0], top_left[1], 0))
-            
+     
             # If we want the texture width and height to be correct...  pyglet
             # media API doesn't specify
             glBindTexture(self._texture.target, self._texture.id)
@@ -580,12 +583,19 @@ class QuickTimeGWorldStreamingVideo(Video):
         bl, br, tr, tl = self.texture.tex_coords
         self.texture.tex_coords = tl, tr, br, bl
 
+        if sys.byteorder == 'big':
+            format = 'ARGB'
+            qtformat = k32ARGBPixelFormat
+        else:
+            format = 'BGRA'
+            qtformat = k32BGRAPixelFormat
+
         # create "graphics world" for QT to render to
         buf = quicktime.NewPtrClear(4 * self.width * self.height)
         self.buffer_type = c_char * (4 * self.width * self.height)
         self.gworld = ctypes.c_void_p() #GWorldPtr()
         result = quicktime.QTNewGWorldFromPtr(ctypes.byref(self.gworld),
-            k32ARGBPixelFormat, ctypes.byref(self.rect), 0, 0, 0, buf,
+            qtformat, ctypes.byref(self.rect), 0, 0, 0, buf,
             4*self.width)
         _oscheck(result) 
         assert self.gworld != 0, 'Could not allocate GWorld'
@@ -604,7 +614,7 @@ class QuickTimeGWorldStreamingVideo(Video):
             POINTER(c_char * (self.gp_row_stride * self.height))).contents
 
         # use ImageData to swizzle the ARGB data
-        self._image = image.ImageData(self.width, self.height, 'ARGB',
+        self._image = image.ImageData(self.width, self.height, format,
             self.gp_buffer)
 
         # restore old GWorld

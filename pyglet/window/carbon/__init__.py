@@ -40,7 +40,6 @@ __docformat__ = 'restructuredtext'
 __version__ = '$Id: $'
 
 from ctypes import *
-import ctypes.util
 import os.path
 import unicodedata
 import warnings
@@ -54,6 +53,7 @@ from pyglet.window.carbon.constants import *
 from pyglet.window.carbon.types import *
 from pyglet.window.carbon.quartzkey import keymap
 
+import pyglet.lib
 from pyglet import gl
 from pyglet.gl import agl
 from pyglet.gl import gl_info
@@ -62,27 +62,10 @@ from pyglet.gl import glu_info
 class CarbonException(WindowException):
     pass
 
-def _get_framework(*names):
-    '''Load a cdll for a framework name.  Optionally can take a list
-    of names, giving the path to a subframework.  For example::
-
-        _get_framework('ApplicationServices', 'CoreGraphics')
-
-    '''
-    path = ctypes.util.find_library(names[0])
-    if not path:
-        raise ImportError('%s framework not found' % names[0])
-    for sub_framework in names[1:]:
-        path = os.path.dirname(path)
-        path = os.path.join(path,
-                            'Versions/Current/Frameworks/%s.framework/%s' % \
-                                (sub_framework, sub_framework))
-        if not os.path.exists(path):
-            raise ImportError('%s framework not found' % sub_framework)
-    return cdll.LoadLibrary(path)
-
-carbon = _get_framework('Carbon')
-quicktime = _get_framework('Quicktime')
+carbon = pyglet.lib.load_library(
+    framework='/System/Library/Frameworks/Carbon.framework')
+quicktime = pyglet.lib.load_library(
+    framework='/System/Library/Frameworks/Quicktime.framework')
 
 import MacOS
 if not MacOS.WMAvailable():
@@ -292,6 +275,7 @@ class CarbonMouseCursor(MouseCursor):
 class CarbonWindow(BaseWindow):
     _window = None                  # Carbon WindowRef
     _agl_context = None             # AGL context ID
+    _recreate_deferred = None
 
     # Window properties
     _minimum_size = None
@@ -309,33 +293,55 @@ class CarbonWindow(BaseWindow):
     _mouse_platform_visible = True
 
     def _recreate(self, changes):
-        if 'context' in changes:
-            self._agl_context = None
+        # We can't destroy the window while event handlers are active,
+        # otherwise the (OS X) event dispatcher gets lost and segfaults.
+        #
+        # Defer actual recreation until dispatch_events next finishes.
+        self._recreate_deferred = changes
 
-        print 'recreate'
+    def _recreate_immediate(self):
+        # The actual _recreate function.
+        changes = self._recreate_deferred
+        self._recreate_deferred = None
+
+        if ('context' in changes):
+            agl.aglSetDrawable(self._agl_context, None)
+
         if ('fullscreen' in changes and
             not self._fullscreen and
             self._fullscreen_restore):
-            quicktime.EndFullScreen(self._fullscreen_restore, 0)
 
-        # Destroy old window if necessary... TODO when?
-        # TODO don't recreate window unless necessary
-        if self._window:
+            # Leaving fullscreen -- destroy everything before the window.
             self._remove_track_region()
             self._remove_event_handlers()
-            carbon.DisposeWindow(self._window)
+            agl.aglSetDrawable(self._agl_context, None)
+            # EndFullScreen disposes _window.
+            quicktime.EndFullScreen(self._fullscreen_restore, 0)
             self._window = None
 
         self._create()
 
     def _create(self):
+        # TODO make this standard on all platforms?
+        self._queued_events = []
+
         self._agl_context = self.context._context
+
+        if self._window:
+            # The window is about to be recreated; destroy everything
+            # associated with the old window, then the window itself.
+            self._remove_track_region()
+            self._remove_event_handlers()
+            agl.aglSetDrawable(self._agl_context, None)
+            carbon.DisposeWindow(self._window)
+            self._window = None
+
         self._window = WindowRef()
 
         if self._fullscreen:
             # Switch to fullscreen mode with QuickTime
-            fs_width = c_short(self._width)
-            fs_height = c_short(self._height)
+            fs_width = c_short(0)
+            fs_height = c_short(0)
             self._fullscreen_restore = c_void_p()
             quicktime.BeginFullScreen(byref(self._fullscreen_restore),
                                       None,
@@ -344,8 +350,17 @@ class CarbonWindow(BaseWindow):
                                       byref(self._window),
                                       None,
                                       0)
+            # the following may be used for debugging if you have a second
+            # monitor - only the main monitor will go fullscreen
+            #agl.aglEnable(self._agl_context, agl.AGL_FS_CAPTURE_SINGLE)
+            self._width = fs_width.value
+            self._height = fs_height.value
             agl.aglSetFullScreen(self._agl_context, 
                                  self._width, self._height, 0, 0)
+
+            self._queued_events.append((event.EVENT_RESIZE, 
+                                       self._width, self._height))
+            self._queued_events.append((event.EVENT_EXPOSE,))
         else:
             # Create floating window
             rect = Rect()
@@ -382,12 +397,12 @@ class CarbonWindow(BaseWindow):
                                        byref(self._window))
             _oscheck(r)
 
-            agl.aglSetDrawable(self._agl_context,
-                carbon.GetWindowPort(self._window))
-
             if location is None:
                 carbon.RepositionWindow(self._window, c_void_p(),
                     kWindowCascadeOnMainScreen)
+
+            agl.aglSetDrawable(self._agl_context,
+                carbon.GetWindowPort(self._window))
 
         _aglcheck()
 
@@ -403,7 +418,11 @@ class CarbonWindow(BaseWindow):
 
         self._create_track_region()
 
+        self.switch_to()
         self.set_vsync(self._vsync)
+
+        if self._visible:
+            self.set_visible(True)
 
     def _create_track_region(self):
         self._remove_track_region()
@@ -435,7 +454,8 @@ class CarbonWindow(BaseWindow):
 
         if self._fullscreen:
             quicktime.EndFullScreen(self._fullscreen_restore, 0)
-        carbon.DisposeWindow(self._window)
+        else:
+            carbon.DisposeWindow(self._window)
         self._window = None
 
     def switch_to(self):
@@ -462,11 +482,17 @@ class CarbonWindow(BaseWindow):
         agl.aglSetInteger(self._agl_context, agl.AGL_SWAP_INTERVAL, byref(swap))
 
     def dispatch_events(self):
+        while self._queued_events:
+            self.dispatch_event(*self._queued_events.pop(0))
+
         e = EventRef()
         result = carbon.ReceiveNextEvent(0, c_void_p(), 0, True, byref(e))
         if result == noErr:
             carbon.SendEventToEventTarget(e, self._event_dispatcher)
             carbon.ReleaseEvent(e)
+
+            if self._recreate_deferred:
+                self._recreate_immediate()
         elif result != eventLoopTimedOutErr:
             raise 'Error %d' % result
 
@@ -491,6 +517,8 @@ class CarbonWindow(BaseWindow):
         return rect.left, rect.top
 
     def set_size(self, width, height):
+        if self._fullscreen:
+            raise WindowException('Cannot set size of fullscreen window.')
         rect = Rect()
         carbon.GetWindowBounds(self._window, kWindowContentRgn, byref(rect))
         rect.right = rect.left + width
@@ -548,10 +576,10 @@ class CarbonWindow(BaseWindow):
     def set_visible(self, visible=True):
         self._visible = visible
         if visible:
-            width, height = self.get_size()
-            self.dispatch_event(event.EVENT_RESIZE, width, height)
-
             carbon.ShowWindow(self._window)
+            self._queued_events.append((event.EVENT_RESIZE, 
+                                       self._width, self._height))
+            self._queued_events.append((event.EVENT_EXPOSE,))
         else:
             carbon.HideWindow(self._window)
 

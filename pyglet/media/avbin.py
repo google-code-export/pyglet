@@ -33,7 +33,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ----------------------------------------------------------------------------
 
-'''Use avcodecs to decode audio and video media.
+'''Use avbin to decode audio and video media.
 '''
 
 __docformat__ = 'restructuredtext'
@@ -41,30 +41,29 @@ __version__ = '$Id$'
 
 from pyglet.media import (MediaFormatException, StreamingSource, 
                           VideoFormat, AudioFormat, AudioData)
-#import pyglet.lib
-#av = pyglet.lib.load_library('/home/alex/projects/avcodecs/libavcodecs.so.1.0')
 
 from pyglet import gl
 from pyglet.gl import gl_info
 from pyglet import image
+import pyglet.lib
 
 import ctypes
-av = ctypes.cdll.LoadLibrary('/home/alex/projects/avcodecs/libavcodecs.so.1')
+
+av = pyglet.lib.load_library('avbin')
 
 Timestamp = ctypes.c_int64
 
+AVBIN_STREAM_TYPE_UNKNOWN = 0
+AVBIN_STREAM_TYPE_VIDEO = 1
+AVBIN_STREAM_TYPE_AUDIO = 2
 
-AVCODECS_STREAM_TYPE_UNKNOWN = 0
-AVCODECS_STREAM_TYPE_VIDEO = 1
-AVCODECS_STREAM_TYPE_AUDIO = 2
+AVBIN_SAMPLE_FORMAT_U8 = 0
+AVBIN_SAMPLE_FORMAT_S16 = 1
+AVBIN_SAMPLE_FORMAT_S24 = 2
+AVBIN_SAMPLE_FORMAT_S32 = 3
+AVBIN_SAMPLE_FORMAT_FLOAT = 4
 
-AVCODECS_SAMPLE_FORMAT_U8 = 0
-AVCODECS_SAMPLE_FORMAT_S16 = 1
-AVCODECS_SAMPLE_FORMAT_S24 = 2
-AVCODECS_SAMPLE_FORMAT_S32 = 3
-AVCODECS_SAMPLE_FORMAT_FLOAT = 4
-
-class AvcodecsFileInfo(ctypes.Structure):
+class AVbinFileInfo(ctypes.Structure):
     _fields_ = [
         ('structure_size', ctypes.c_size_t),
         ('streams', ctypes.c_int),
@@ -79,7 +78,7 @@ class AvcodecsFileInfo(ctypes.Structure):
         ('genre', ctypes.c_char * 32),
     ]
 
-class _AvcodecsStreamInfoVideo(ctypes.Structure):
+class _AVbinStreamInfoVideo(ctypes.Structure):
     _fields_ = [
         ('width', ctypes.c_uint),
         ('height', ctypes.c_uint),
@@ -87,7 +86,7 @@ class _AvcodecsStreamInfoVideo(ctypes.Structure):
         ('sample_aspect_den', ctypes.c_int),
     ]
 
-class _AvcodecsStreamInfoAudio(ctypes.Structure):
+class _AVbinStreamInfoAudio(ctypes.Structure):
     _fields_ = [
         ('sample_rate', ctypes.c_uint),
         ('channels', ctypes.c_uint),
@@ -95,20 +94,20 @@ class _AvcodecsStreamInfoAudio(ctypes.Structure):
         ('sample_format', ctypes.c_int),
     ]
 
-class _AvcodecsStreamInfoUnion(ctypes.Union):
+class _AVbinStreamInfoUnion(ctypes.Union):
     _fields_ = [
-        ('video', _AvcodecsStreamInfoVideo),
-        ('audio', _AvcodecsStreamInfoAudio),
+        ('video', _AVbinStreamInfoVideo),
+        ('audio', _AVbinStreamInfoAudio),
     ]
 
-class AvcodecsStreamInfo(ctypes.Structure):
+class AVbinStreamInfo(ctypes.Structure):
     _fields_ = [
         ('structure_size', ctypes.c_size_t),
         ('type', ctypes.c_int),
-        ('u', _AvcodecsStreamInfoUnion)
+        ('u', _AVbinStreamInfoUnion)
     ]
 
-class AvcodecsPacket(ctypes.Structure):
+class AVbinPacket(ctypes.Structure):
     _fields_ = [
         ('structure_size', ctypes.c_size_t),
         ('has_timestamp', ctypes.c_int),
@@ -118,29 +117,29 @@ class AvcodecsPacket(ctypes.Structure):
         ('size', ctypes.c_size_t),
     ]
 
-av.avcodecs_open_filename.restype = ctypes.c_void_p
-av.avcodecs_open_filename.argtypes = [ctypes.c_char_p]
-av.avcodecs_seek_file.argtypes = [ctypes.c_void_p, Timestamp]
-av.avcodecs_open_stream.restype = ctypes.c_void_p
+av.avbin_open_filename.restype = ctypes.c_void_p
+av.avbin_open_filename.argtypes = [ctypes.c_char_p]
+av.avbin_seek_file.argtypes = [ctypes.c_void_p, Timestamp]
+av.avbin_open_stream.restype = ctypes.c_void_p
 
-av.avcodecs_read.argtypes = [ctypes.c_void_p, ctypes.POINTER(AvcodecsPacket)]
-av.avcodecs_decode_audio.argtypes = [ctypes.c_void_p, 
+av.avbin_read.argtypes = [ctypes.c_void_p, ctypes.POINTER(AVbinPacket)]
+av.avbin_decode_audio.argtypes = [ctypes.c_void_p, 
     ctypes.c_void_p, ctypes.c_size_t,
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
-av.avcodecs_decode_video.argtypes = [ctypes.c_void_p, 
+av.avbin_decode_video.argtypes = [ctypes.c_void_p, 
     ctypes.c_void_p, ctypes.c_size_t,
     ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
 
 def get_version():
-    return av.avcodecs_get_version()
+    return av.avbin_get_version()
 
-class AvcodecsException(MediaFormatException):
+class AVbinException(MediaFormatException):
     pass
 
-def timestamp_from_avcodecs(timestamp):
+def timestamp_from_avbin(timestamp):
     return float(timestamp) / 1000000
 
-def timestamp_to_avcodecs(timestamp):
+def timestamp_to_avbin(timestamp):
     return int(timestamp * 1000000)
 
 class BufferedPacket(object):
@@ -151,35 +150,35 @@ class BufferedPacket(object):
         self.size = packet.size
         ctypes.memmove(self.data, packet.data, self.size)
 
-class AvcodecsSource(StreamingSource):
+class AVbinSource(StreamingSource):
     def __init__(self, filename, file=None):
         if file is not None:
             raise NotImplementedError('TODO: Load from file stream')
 
-        self._file = av.avcodecs_open_filename(filename)
+        self._file = av.avbin_open_filename(filename)
         if not self._file:
-            raise AvcodecsException('Could not open "%s"' % filename)
+            raise AVbinException('Could not open "%s"' % filename)
 
         self._video_stream = None
         self._audio_stream = None
 
-        file_info = AvcodecsFileInfo()
+        file_info = AVbinFileInfo()
         file_info.structure_size = ctypes.sizeof(file_info)
-        av.avcodecs_file_info(self._file, ctypes.byref(file_info))
-        self._duration = timestamp_from_avcodecs(file_info.duration)
+        av.avbin_file_info(self._file, ctypes.byref(file_info))
+        self._duration = timestamp_from_avbin(file_info.duration)
 
         # Pick the first video and audio streams found, ignore others.
         for i in range(file_info.streams):
-            stream = av.avcodecs_open_stream(self._file, i)
+            stream = av.avbin_open_stream(self._file, i)
             if not stream:
                 # Not decodable
                 continue
 
-            info = AvcodecsStreamInfo()
+            info = AVbinStreamInfo()
             info.structure_size = ctypes.sizeof(info)
-            av.avcodecs_stream_info(stream, ctypes.byref(info))
+            av.avbin_stream_info(stream, ctypes.byref(info))
 
-            if (info.type == AVCODECS_STREAM_TYPE_VIDEO and 
+            if (info.type == AVBIN_STREAM_TYPE_VIDEO and 
                 not self._video_stream):
                 self.video_format = VideoFormat(
                     width=info.u.video.width,
@@ -191,7 +190,7 @@ class AvcodecsSource(StreamingSource):
                 self._video_stream = stream
                 self._video_stream_index = i
 
-            elif (info.type == AVCODECS_STREAM_TYPE_AUDIO and
+            elif (info.type == AVBIN_STREAM_TYPE_AUDIO and
                   info.u.audio.sample_size in (8, 16) and
                   info.u.audio.channels in (1, 2) and 
                   not self._audio_stream):
@@ -202,9 +201,9 @@ class AvcodecsSource(StreamingSource):
                 self._audio_stream = stream
                 self._audio_stream_index = i
             else:
-                av.avcodecs_close_stream(stream)
+                av.avbin_close_stream(stream)
 
-        self._packet = AvcodecsPacket()
+        self._packet = AVbinPacket()
         self._packet.structure_size = ctypes.sizeof(self._packet)
         self._packet.stream = -1
         self._buffered_packets = []
@@ -215,7 +214,7 @@ class AvcodecsSource(StreamingSource):
             self._audio_packet_size = 0
             self._audio_packet_timestamp = 0
             self._audio_buffer = \
-                (ctypes.c_uint8 * av.avcodecs_audio_buffer_size())()
+                (ctypes.c_uint8 * av.avbin_audio_buffer_size())()
             self._buffer_streams.append(self._audio_stream_index)
             self._next_audio_data = self._get_next_audio_data()
             
@@ -228,15 +227,15 @@ class AvcodecsSource(StreamingSource):
     def __del__(self):
         try:
             if self._video_stream:
-                av.avcodecs_close_stream(self._video_stream)
+                av.avbin_close_stream(self._video_stream)
             if self._audio_stream:
-                av.avcodecs_close_stream(self._audio_stream)
-            av.avcodecs_close_file(self._file)
+                av.avbin_close_stream(self._audio_stream)
+            av.avbin_close_file(self._file)
         except (NameError, AttributeError):
             pass
 
     def _seek(self, timestamp):
-        av.avcodecs_seek_file(self._file, timestamp_to_avcodecs(timestamp))
+        av.avbin_seek_file(self._file, timestamp_to_avbin(timestamp))
         self._buffered_packets = []
         self._next_video_image = None
         self._force_next_video_image = True
@@ -251,7 +250,7 @@ class AvcodecsSource(StreamingSource):
         # Read more packets, buffering each interesting one until we get to 
         # the one we want or reach end of file.
         while True: 
-            if av.avcodecs_read(self._file, self._packet) != 0:
+            if av.avbin_read(self._file, self._packet) != 0:
                 return None
             elif self._packet.stream == stream_index:
                 return self._packet
@@ -263,7 +262,7 @@ class AvcodecsSource(StreamingSource):
             while self._audio_packet_size > 0:
                 size_out = ctypes.c_int(len(self._audio_buffer))
 
-                used = av.avcodecs_decode_audio(self._audio_stream,
+                used = av.avbin_decode_audio(self._audio_stream,
                     self._audio_packet_ptr, self._audio_packet_size,
                     self._audio_buffer, size_out)
 
@@ -290,7 +289,7 @@ class AvcodecsSource(StreamingSource):
                 return None
 
             self._audio_packet_timestamp = \
-                timestamp_from_avcodecs(packet.timestamp)
+                timestamp_from_avbin(packet.timestamp)
             self._audio_packet_ptr = ctypes.cast(packet.data,
                                                  ctypes.c_void_p)
             self._audio_packet_size = packet.size
@@ -353,13 +352,13 @@ class AvcodecsSource(StreamingSource):
         if not packet:
             return
         # TODO what if no timestamp?
-        self._next_video_timestamp = timestamp_from_avcodecs(packet.timestamp)
+        self._next_video_timestamp = timestamp_from_avbin(packet.timestamp)
 
         width = self.video_format.width
         height = self.video_format.height
         pitch = ctypes.c_int()
         buffer = (ctypes.c_uint8 * (width * height * 3))()
-        result = av.avcodecs_decode_video(self._video_stream, 
+        result = av.avbin_decode_video(self._video_stream, 
                                           packet.data, packet.size, 
                                           buffer, pitch)
         if result < 0:
@@ -378,4 +377,4 @@ class AvcodecsSource(StreamingSource):
             player._texture.delete()
         player._texture = None
 
-av.avcodecs_init()
+av.avbin_init()

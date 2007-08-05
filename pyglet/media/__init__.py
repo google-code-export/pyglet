@@ -782,8 +782,8 @@ else:
 # TODO: port platform media readers to the new design.  In the meantime,
 # use Python WAVE loader only.
 def load(filename, file=None, streaming=True):
-    from pyglet.media import avcodecs
-    source = avcodecs.AvcodecsSource(filename, file)
+    from pyglet.media import avbin
+    source = avbin.AVbinSource(filename, file)
     '''
     from pyglet.media import riff
     source = riff.WaveSource(filename, file)

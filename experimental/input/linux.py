@@ -183,6 +183,14 @@ class Device(object):
 
         self.name = EVIOCGNAME(fileno)
         try:
+            self.name = self.name.decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                self.name = name.decode('latin-1')
+            except UnicodeDecodeError:
+                pass
+
+        try:
             self.phys = EVIOCGPHYS(fileno)
         except OSError:
             self.phys = ''

@@ -1,0 +1,70 @@
+<div>
+  <h2>mailing lists</h2>
+  <p>
+    The main forum for pyglet discussion is the <a
+    href="http://groups.google.com/group/pyglet-users">pyglet-users</a>
+    mailing list.  You can browse the mailing list online or provide your
+    email address for immediate or digest updates.
+  </p>
+
+  <p>
+    There are two more mailing lists if you're interested in following the
+    progress of pyglet development:
+  </p>
+
+  <ul>
+    <li><a
+    href="http://groups.google.com/group/pyglet-issues">pyglet-issues</a> is
+    an announcement list which broadcasts emails from the issue tracker.</li>
+
+    <li><a
+    href="http://groups.google.com/group/pyglet-commits">pyglet-commits</a> is
+    an announcement list which broadcasts SVN commits.</li>
+  </ul>
+
+  <!--
+  <h2>user pages</h2>
+
+  <p>Members of the pyglet-users mailing list can collaborate to <a
+  href="http://groups.google.com/group/pyglet-users/files">upload files</a>
+  and <a href="http://groups.google.com/group/pyglet-users/web">create web
+  pages</a>.  Screenshots from these pages will appear on pyglet.org to
+  promote your projects as well as pyglet.</p>
+
+  <p>Members can also contribute to the <a
+  href="http://groups.google.com/group/pyglet-users/web/faq">FAQ</a>, or write
+  new tutorials and "howto"s.</p>
+  -->
+
+  <h2>issue tracker</h2>
+
+  <p>The <a href="http://code.google.com/p/pyglet/issues/list">issue tracker</a>
+  should be used to report any bugs or compatibility issues.  You will need
+  a <a href="http://mail.google.com/mail/signup">Google account</a> to submit
+  issues.</p>
+
+  <h2>wiki</h2>
+
+  <p>We have a <a href="http://code.google.com/p/pyglet/w/list">wiki</a> which
+  is primarily used for discussing future design aspects of pyglet.  Anyone
+  can read this wiki, however you must be a pyglet developer (have SVN commit
+  access) to write to it.</p>
+
+  <h2>subversion repository</h2>
+
+  <p>The subversion repository houses the source trunk, documentation,
+  examples and development tools.  You can <a
+  href="http://pyglet.googlecode.com/svn/">browse the repository</a> or check
+  out a working copy using an SVN client:</p>
+
+  <p class="console">svn checkout http://pyglet.googlecode.com/svn/trunk/
+  pyglet</p>
+
+  <h2>contact</h2>
+
+  <p>pyglet is primarily developed by Alex Holkner.  You can reach him via
+  email at <a href="Alex.Holkner@gmail.com">Alex.Holkner@gmail.com</a>.  Other
+  contributors are noted in the NOTICE file of the source trunk or any source
+  distribution.</p>
+
+</div>
